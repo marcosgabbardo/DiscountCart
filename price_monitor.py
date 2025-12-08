@@ -50,7 +50,10 @@ def add_product(url: str, target_price_str: str):
     target_price = parse_price(target_price_str)
     if not target_price:
         print(f"Error: Could not parse price '{target_price_str}'.")
-        print("Use formats like: R$80,99 or 80.99 or 80,99")
+        print("Use formats like: 80,99 or 80.99")
+        print("")
+        print("TIP: If using R$, use single quotes to avoid shell issues:")
+        print("     python price_monitor.py add \"URL\" '80,99'")
         sys.exit(1)
 
     print(f"Adding product with target price {format_currency(target_price)}...")

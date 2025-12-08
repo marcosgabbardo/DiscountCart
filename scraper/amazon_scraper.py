@@ -144,35 +144,52 @@ class AmazonScraper:
         if title_elem:
             product.title = title_elem.get_text(strip=True)
 
-        # Extract price - try multiple selectors
+        # Extract price - try multiple selectors (ordered by specificity)
+        # More specific selectors first to get the main product price
         price_selectors = [
-            '.a-price .a-offscreen',
+            # Main price display area (most reliable for current price)
+            '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen',
+            '#corePrice_desktop_feature_div .priceToPay .a-offscreen',
+            '.priceToPay .a-offscreen',
+            # Apex offer display (Buy Box price)
+            '#apex_offerDisplay_desktop .a-price .a-offscreen',
+            '#apex_desktop .a-price .a-offscreen',
+            # Core price feature divs
+            '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
+            '#corePrice_feature_div .a-price .a-offscreen',
+            # Legacy selectors
             '#priceblock_ourprice',
             '#priceblock_dealprice',
             '#priceblock_saleprice',
-            '.a-price-whole',
-            '#corePrice_feature_div .a-offscreen',
-            '#corePriceDisplay_desktop_feature_div .a-offscreen',
-            '.priceToPay .a-offscreen',
-            '#apex_offerDisplay_desktop .a-offscreen',
+            # Generic price (last resort - may catch wrong price)
+            '#centerCol .a-price .a-offscreen',
+            '#buybox .a-price .a-offscreen',
         ]
 
         for selector in price_selectors:
             price_elem = soup.select_one(selector)
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
-                product.price = self._parse_price(price_text)
-                if product.price:
+                parsed_price = self._parse_price(price_text)
+                if parsed_price and parsed_price > 0:
+                    product.price = parsed_price
                     break
 
-        # Try to get price from the whole + fraction format
+        # Try to get price from the whole + fraction format (fallback)
         if not product.price:
-            whole = soup.select_one('.a-price-whole')
-            fraction = soup.select_one('.a-price-fraction')
+            # Try specific container first
+            price_container = soup.select_one('#corePriceDisplay_desktop_feature_div .a-price')
+            if not price_container:
+                price_container = soup.select_one('.priceToPay')
+            if not price_container:
+                price_container = soup
+
+            whole = price_container.select_one('.a-price-whole')
+            fraction = price_container.select_one('.a-price-fraction')
             if whole:
-                price_text = whole.get_text(strip=True)
+                price_text = whole.get_text(strip=True).replace('.', '').replace(',', '')
                 if fraction:
-                    price_text += fraction.get_text(strip=True)
+                    price_text += ',' + fraction.get_text(strip=True)
                 product.price = self._parse_price(price_text)
 
         # Extract original price (if on sale)

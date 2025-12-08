@@ -1,3 +1,3 @@
-from .amazon_scraper import AmazonScraper
+from .zaffari_scraper import ZaffariScraper, ScrapedProduct
 
-__all__ = ['AmazonScraper']
+__all__ = ['ZaffariScraper', 'ScrapedProduct']

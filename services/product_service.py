@@ -4,10 +4,9 @@ Product service for managing monitored products.
 
 from decimal import Decimal
 from typing import Optional, List
-from datetime import datetime, timedelta
 
 from database import get_db, Product, PriceHistory, ProductSummary
-from scraper import AmazonScraper
+from scraper import ZaffariScraper
 
 
 class ProductService:
@@ -15,14 +14,14 @@ class ProductService:
 
     def __init__(self):
         self.db = get_db()
-        self.scraper = AmazonScraper()
+        self.scraper = ZaffariScraper()
 
     def add_product(self, url: str, target_price: Decimal) -> Product:
         """
         Add a new product to monitor.
 
         Args:
-            url: Amazon product URL
+            url: Zaffari product URL
             target_price: Target price for alerts
 
         Returns:
@@ -34,8 +33,8 @@ class ProductService:
         if scraped.error and not scraped.title:
             raise ValueError(f"Failed to scrape product: {scraped.error}")
 
-        # Check if product already exists
-        existing = self.get_product_by_asin(scraped.asin)
+        # Check if product already exists (use SKU as identifier)
+        existing = self.get_product_by_sku(scraped.sku)
         if existing:
             # Update target price and reactivate if needed
             self._update_product_target(existing.id, target_price)
@@ -49,7 +48,7 @@ class ProductService:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
-            scraped.asin,
+            scraped.sku,  # Using SKU in asin column
             scraped.url,
             scraped.title,
             scraped.image_url,
@@ -87,10 +86,10 @@ class ProductService:
             return Product.from_dict(results[0])
         return None
 
-    def get_product_by_asin(self, asin: str) -> Optional[Product]:
-        """Get product by ASIN."""
+    def get_product_by_sku(self, sku: str) -> Optional[Product]:
+        """Get product by SKU."""
         query = "SELECT * FROM products WHERE asin = %s"
-        results = self.db.execute_query(query, (asin,))
+        results = self.db.execute_query(query, (sku,))
         if results:
             return Product.from_dict(results[0])
         return None
@@ -154,7 +153,7 @@ class ProductService:
         updated = []
 
         for i, product in enumerate(products):
-            print(f"Updating {i + 1}/{len(products)}: {product.title[:50] if product.title else product.asin}...")
+            print(f"Atualizando {i + 1}/{len(products)}: {product.title[:50] if product.title else product.asin}...")
             updated_product = self.update_product_price(product.id)
             if updated_product:
                 updated.append(updated_product)

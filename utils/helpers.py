@@ -22,10 +22,18 @@ def parse_price(price_str: str) -> Optional[Decimal]:
         return None
 
     # Remove currency symbols, spaces, and common prefixes
-    cleaned = re.sub(r'[R$\s]', '', price_str.strip())
+    # Note: Using explicit characters to avoid regex issues
+    cleaned = price_str.strip()
+    cleaned = cleaned.replace('R', '').replace('$', '').replace(' ', '')
 
     # Handle empty string after cleaning
     if not cleaned:
+        return None
+
+    # Check for shell variable expansion issue (value starts with , or .)
+    # This happens when user uses "R$80,99" and shell interprets $80 as variable
+    if cleaned.startswith(',') or cleaned.startswith('.'):
+        # Try to warn user - this is likely a shell expansion issue
         return None
 
     # Determine format and normalize

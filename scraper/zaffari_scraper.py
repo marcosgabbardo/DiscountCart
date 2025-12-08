@@ -170,8 +170,9 @@ class ZaffariScraper:
                     product.title = title_text
                     break
 
-        # Extract price - VTEX common selectors
+        # Extract price - Zaffari specific selector first, then VTEX common selectors
         price_selectors = [
+            '.zaffarilab-zaffari-produto-1-x-ProductPriceSellingPriceValue',
             '.vtex-product-price-1-x-sellingPrice',
             '.vtex-product-price-1-x-currencyContainer',
             '.vtex-store-components-3-x-sellingPrice',

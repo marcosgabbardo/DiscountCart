@@ -14,6 +14,7 @@ class AlertType(Enum):
     TARGET_REACHED = 'target_reached'
     PRICE_DROP = 'price_drop'
     BELOW_AVERAGE = 'below_average'
+    STD_DEVIATION = 'std_deviation'  # Alerta quando preço cai 1 desvio padrão
 
 
 @dataclass

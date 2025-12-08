@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Amazon Price Monitor CLI
+Zaffari Price Monitor CLI
 
-A command-line tool to monitor Amazon product prices and get alerts
+A command-line tool to monitor Zaffari product prices and get alerts
 when prices drop to your target.
 
 Usage:
@@ -19,8 +19,6 @@ Usage:
 import sys
 import argparse
 from decimal import Decimal
-from datetime import datetime
-from typing import Optional
 
 from tabulate import tabulate
 
@@ -28,64 +26,65 @@ from config import settings
 from database import get_db
 from database.models import AlertType
 from services import ProductService, AlertService
-from utils import parse_price, format_currency, truncate_string, validate_amazon_url
+from utils import parse_price, format_currency, truncate_string, validate_zaffari_url
 
 
 def init_database():
     """Initialize the database schema."""
-    print("Initializing database...")
+    print("Inicializando banco de dados...")
     db = get_db()
     db.init_database()
-    print("Database initialized successfully!")
+    print("Banco de dados inicializado com sucesso!")
 
 
 def add_product(url: str, target_price_str: str):
     """Add a new product to monitor."""
     # Validate URL
-    if not validate_amazon_url(url):
-        print(f"Error: '{url}' does not appear to be a valid Amazon URL.")
+    if not validate_zaffari_url(url):
+        print(f"Erro: '{url}' não parece ser uma URL válida do Zaffari.")
+        print("Use uma URL no formato: https://www.zaffari.com.br/produto-123/p")
         sys.exit(1)
 
     # Parse target price
     target_price = parse_price(target_price_str)
     if not target_price:
-        print(f"Error: Could not parse price '{target_price_str}'.")
-        print("Use formats like: 80,99 or 80.99")
+        print(f"Erro: Não foi possível interpretar o preço '{target_price_str}'.")
+        print("Use formatos como: 80,99 ou 80.99")
         print("")
-        print("TIP: If using R$, use single quotes to avoid shell issues:")
+        print("DICA: Use aspas simples para evitar problemas com o shell:")
         print("     python price_monitor.py add \"URL\" '80,99'")
         sys.exit(1)
 
-    print(f"Adding product with target price {format_currency(target_price)}...")
-    print("Fetching product information from Amazon...")
+    print(f"Adicionando produto com preço alvo {format_currency(target_price)}...")
+    print("Buscando informações do produto no Zaffari...")
 
     try:
         service = ProductService()
         product = service.add_product(url, target_price)
 
-        print("\n✅ Product added successfully!")
+        print("\n✅ Produto adicionado com sucesso!")
         print("-" * 50)
         print(f"ID: {product.id}")
-        print(f"Title: {product.title}")
-        print(f"ASIN: {product.asin}")
-        print(f"Current Price: {format_currency(product.current_price)}")
-        print(f"Target Price: {format_currency(product.target_price)}")
+        print(f"Título: {product.title}")
+        print(f"SKU: {product.asin}")
+        print(f"Preço Atual: {format_currency(product.current_price)}")
+        print(f"Preço Alvo: {format_currency(product.target_price)}")
 
         if product.current_price:
             if product.current_price <= product.target_price:
-                print("\n🎉 Great news! The product is already at or below your target price!")
+                print("\n🎉 Ótima notícia! O produto já está no preço alvo ou abaixo!")
             else:
                 diff = product.current_price - product.target_price
                 percent = (diff / product.current_price) * 100
-                print(f"\nPrice needs to drop {format_currency(diff)} ({percent:.1f}%) to reach target.")
+                print(f"\nO preço precisa cair {format_currency(diff)} ({percent:.1f}%) para atingir o alvo.")
 
         # Create default target alert
         alert_service = AlertService()
         alert_service.create_alert(product.id, AlertType.TARGET_REACHED)
-        print("\n📢 Alert created: You'll be notified when the price reaches your target.")
+        print("\n📢 Alerta criado: Você será notificado quando o preço atingir o alvo.")
 
     except Exception as e:
-        print(f"\n❌ Error adding product: {e}")
+        print(f"\n❌ Erro ao adicionar produto: {e}")
         sys.exit(1)
 
 
@@ -96,8 +95,8 @@ def list_products():
         products = service.get_all_products()
 
         if not products:
-            print("No products being monitored.")
-            print("Add a product with: python price_monitor.py add <url> <target_price>")
+            print("Nenhum produto sendo monitorado.")
+            print("Adicione um produto com: python price_monitor.py add <url> <preco_alvo>")
             return
 
         # Prepare table data
@@ -122,20 +121,20 @@ def list_products():
                 status,
             ])
 
-        headers = ["ID", "Product", "Current", "Target", "Difference", "Status"]
-        print(f"\n📦 Monitored Products ({len(products)})")
+        headers = ["ID", "Produto", "Atual", "Alvo", "Diferença", "Status"]
+        print(f"\n📦 Produtos Monitorados ({len(products)})")
         print("-" * 80)
         print(tabulate(table_data, headers=headers, tablefmt="simple"))
         print("-" * 80)
 
     except Exception as e:
-        print(f"Error listing products: {e}")
+        print(f"Erro ao listar produtos: {e}")
         sys.exit(1)
 
 
 def check_prices():
     """Check current prices and show alerts."""
-    print("Checking prices and alerts...")
+    print("Verificando preços e alertas...")
 
     try:
         product_service = ProductService()
@@ -145,49 +144,49 @@ def check_prices():
         at_target = product_service.get_products_at_target()
 
         if at_target:
-            print(f"\n🎉 {len(at_target)} product(s) at or below target price!")
+            print(f"\n🎉 {len(at_target)} produto(s) no preço alvo ou abaixo!")
             print("=" * 60)
 
             for product in at_target:
                 savings = product.target_price - product.current_price
                 print(f"\n📦 {truncate_string(product.title, 50)}")
-                print(f"   Current: {format_currency(product.current_price)}")
-                print(f"   Target:  {format_currency(product.target_price)}")
-                print(f"   Savings: {format_currency(savings)}")
+                print(f"   Atual: {format_currency(product.current_price)}")
+                print(f"   Alvo:  {format_currency(product.target_price)}")
+                print(f"   Economia: {format_currency(savings)}")
                 print(f"   URL: {product.url}")
 
                 # Print alert
                 alert_service.print_alert(
                     product,
-                    "Preco atingiu seu alvo!"
+                    "Preço atingiu seu alvo!"
                 )
 
             print("\n" + "=" * 60)
         else:
-            print("\n👀 No products at target price yet.")
+            print("\n👀 Nenhum produto no preço alvo ainda.")
 
         # Check for products below average
         below_avg = product_service.get_products_below_average(days=7, threshold_percent=settings.PRICE_DROP_THRESHOLD_PERCENT)
 
         if below_avg:
-            print(f"\n📉 {len(below_avg)} product(s) below 7-day average:")
+            print(f"\n📉 {len(below_avg)} produto(s) abaixo da média de 7 dias:")
             for item in below_avg:
                 product = item['product']
-                print(f"   • {truncate_string(product.title, 40)}: {format_currency(product.current_price)} ({item['discount_percent']:.1f}% below avg)")
+                print(f"   • {truncate_string(product.title, 40)}: {format_currency(product.current_price)} ({item['discount_percent']:.1f}% abaixo da média)")
 
         # Summary
         all_products = product_service.get_all_products()
-        print(f"\n📊 Summary: {len(at_target)}/{len(all_products)} products at target price")
+        print(f"\n📊 Resumo: {len(at_target)}/{len(all_products)} produtos no preço alvo")
 
     except Exception as e:
-        print(f"Error checking prices: {e}")
+        print(f"Erro ao verificar preços: {e}")
         sys.exit(1)
 
 
 def update_prices():
     """Update prices for all monitored products."""
-    print("Updating prices for all products...")
-    print("This may take a while to avoid being blocked by Amazon.\n")
+    print("Atualizando preços de todos os produtos...")
+    print("Isso pode demorar um pouco para evitar bloqueio pelo site.\n")
 
     try:
         service = ProductService()
@@ -195,12 +194,12 @@ def update_prices():
 
         products = service.get_all_products()
         if not products:
-            print("No products to update.")
+            print("Nenhum produto para atualizar.")
             return
 
         updated = service.update_all_prices()
 
-        print(f"\n✅ Updated {len(updated)} product(s)")
+        print(f"\n✅ {len(updated)} produto(s) atualizado(s)")
 
         # Check alerts after update
         newly_triggered = alert_service.check_alerts(updated)
@@ -218,7 +217,7 @@ def update_prices():
         check_prices()
 
     except Exception as e:
-        print(f"Error updating prices: {e}")
+        print(f"Erro ao atualizar preços: {e}")
         sys.exit(1)
 
 
@@ -229,10 +228,10 @@ def show_alerts():
         triggered = service.get_triggered_alerts()
 
         if not triggered:
-            print("No triggered alerts.")
+            print("Nenhum alerta disparado.")
             return
 
-        print(f"\n🔔 Triggered Alerts ({len(triggered)})")
+        print(f"\n🔔 Alertas Disparados ({len(triggered)})")
         print("=" * 60)
 
         for item in triggered:
@@ -240,16 +239,16 @@ def show_alerts():
             product = item['product']
 
             print(f"\n📦 {truncate_string(product['title'], 50)}")
-            print(f"   ASIN: {product['asin']}")
-            print(f"   Current Price: {format_currency(product['current_price'])}")
-            print(f"   Target Price: {format_currency(product['target_price'])}")
-            print(f"   Triggered At: {alert.triggered_at}")
+            print(f"   SKU: {product['asin']}")
+            print(f"   Preço Atual: {format_currency(product['current_price'])}")
+            print(f"   Preço Alvo: {format_currency(product['target_price'])}")
+            print(f"   Disparado em: {alert.triggered_at}")
             print(f"   URL: {product['url']}")
 
         print("\n" + "=" * 60)
 
     except Exception as e:
-        print(f"Error showing alerts: {e}")
+        print(f"Erro ao mostrar alertas: {e}")
         sys.exit(1)
 
 
@@ -260,17 +259,17 @@ def show_history(product_id: int, days: int = 30):
 
         product = service.get_product_by_id(product_id)
         if not product:
-            print(f"Product with ID {product_id} not found.")
+            print(f"Produto com ID {product_id} não encontrado.")
             sys.exit(1)
 
         history = service.get_price_history(product_id, days)
 
-        print(f"\n📊 Price History: {truncate_string(product.title, 40)}")
-        print(f"   Target: {format_currency(product.target_price)}")
+        print(f"\n📊 Histórico de Preços: {truncate_string(product.title, 40)}")
+        print(f"   Alvo: {format_currency(product.target_price)}")
         print("-" * 50)
 
         if not history:
-            print("No price history available.")
+            print("Nenhum histórico disponível.")
             return
 
         # Calculate statistics
@@ -279,14 +278,14 @@ def show_history(product_id: int, days: int = 30):
         min_price = min(prices)
         max_price = max(prices)
 
-        print(f"\nStatistics (last {days} days):")
-        print(f"   Average: {format_currency(Decimal(str(avg_price)))}")
-        print(f"   Lowest:  {format_currency(min_price)}")
-        print(f"   Highest: {format_currency(max_price)}")
-        print(f"   Records: {len(history)}")
+        print(f"\nEstatísticas (últimos {days} dias):")
+        print(f"   Média:   {format_currency(Decimal(str(avg_price)))}")
+        print(f"   Mínimo:  {format_currency(min_price)}")
+        print(f"   Máximo:  {format_currency(max_price)}")
+        print(f"   Registros: {len(history)}")
 
         # Show recent history
-        print(f"\nRecent prices:")
+        print(f"\nPreços recentes:")
         table_data = []
         for h in history[:15]:  # Last 15 records
             status = "✅" if h.price <= product.target_price else ""
@@ -296,11 +295,11 @@ def show_history(product_id: int, days: int = 30):
                 status,
             ])
 
-        headers = ["Date", "Price", "At Target"]
+        headers = ["Data", "Preço", "No Alvo"]
         print(tabulate(table_data, headers=headers, tablefmt="simple"))
 
     except Exception as e:
-        print(f"Error showing history: {e}")
+        print(f"Erro ao mostrar histórico: {e}")
         sys.exit(1)
 
 
@@ -311,22 +310,22 @@ def remove_product(product_id: int):
 
         product = service.get_product_by_id(product_id)
         if not product:
-            print(f"Product with ID {product_id} not found.")
+            print(f"Produto com ID {product_id} não encontrado.")
             sys.exit(1)
 
         # Confirm deletion
-        print(f"Product: {product.title}")
-        confirm = input("Are you sure you want to remove this product? (y/N): ")
+        print(f"Produto: {product.title}")
+        confirm = input("Tem certeza que deseja remover este produto? (s/N): ")
 
-        if confirm.lower() != 'y':
-            print("Cancelled.")
+        if confirm.lower() != 's':
+            print("Cancelado.")
             return
 
         service.delete_product(product_id)
-        print(f"✅ Product removed successfully.")
+        print(f"✅ Produto removido com sucesso.")
 
     except Exception as e:
-        print(f"Error removing product: {e}")
+        print(f"Erro ao remover produto: {e}")
         sys.exit(1)
 
 
@@ -337,7 +336,7 @@ def show_product_detail(product_id: int):
         product = service.get_product_by_id(product_id)
 
         if not product:
-            print(f"Product with ID {product_id} not found.")
+            print(f"Produto com ID {product_id} não encontrado.")
             sys.exit(1)
 
         avg_7 = service.get_average_price(product_id, 7)
@@ -347,41 +346,41 @@ def show_product_detail(product_id: int):
         print(f"📦 {product.title}")
         print("=" * 60)
         print(f"ID:           {product.id}")
-        print(f"ASIN:         {product.asin}")
+        print(f"SKU:          {product.asin}")
         print(f"URL:          {product.url}")
-        print(f"\n💰 Prices:")
-        print(f"   Current:   {format_currency(product.current_price)}")
-        print(f"   Target:    {format_currency(product.target_price)}")
-        print(f"   Lowest:    {format_currency(product.lowest_price)}")
-        print(f"   Highest:   {format_currency(product.highest_price)}")
-        print(f"   Avg (7d):  {format_currency(avg_7)}")
-        print(f"   Avg (30d): {format_currency(avg_30)}")
+        print(f"\n💰 Preços:")
+        print(f"   Atual:     {format_currency(product.current_price)}")
+        print(f"   Alvo:      {format_currency(product.target_price)}")
+        print(f"   Mínimo:    {format_currency(product.lowest_price)}")
+        print(f"   Máximo:    {format_currency(product.highest_price)}")
+        print(f"   Média (7d):  {format_currency(avg_7)}")
+        print(f"   Média (30d): {format_currency(avg_30)}")
 
         if product.current_price and product.target_price:
             diff = product.current_price - product.target_price
             if diff <= 0:
-                print(f"\n✅ At target! Savings: {format_currency(abs(diff))}")
+                print(f"\n✅ No alvo! Economia: {format_currency(abs(diff))}")
             else:
                 percent = (diff / product.current_price) * 100
-                print(f"\n⬇️ Needs to drop: {format_currency(diff)} ({percent:.1f}%)")
+                print(f"\n⬇️ Precisa cair: {format_currency(diff)} ({percent:.1f}%)")
 
-        print(f"\n📅 Created: {product.created_at}")
-        print(f"📅 Updated: {product.updated_at}")
+        print(f"\n📅 Criado: {product.created_at}")
+        print(f"📅 Atualizado: {product.updated_at}")
         print("=" * 60)
 
     except Exception as e:
-        print(f"Error showing product: {e}")
+        print(f"Erro ao mostrar produto: {e}")
         sys.exit(1)
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Amazon Price Monitor - Track product prices and get alerts",
+        description="Zaffari Price Monitor - Monitore preços e receba alertas",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  %(prog)s add "https://amazon.com.br/dp/B0BTXDTD6H" "R$80,99"
+Exemplos:
+  %(prog)s add "https://www.zaffari.com.br/produto-123/p" "R$80,99"
   %(prog)s list
   %(prog)s check
   %(prog)s update
@@ -393,40 +392,40 @@ Examples:
         """
     )
 
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    subparsers = parser.add_subparsers(dest='command', help='Comandos disponíveis')
 
     # init-db command
-    subparsers.add_parser('init-db', help='Initialize the database')
+    subparsers.add_parser('init-db', help='Inicializar banco de dados')
 
     # add command
-    add_parser = subparsers.add_parser('add', help='Add a product to monitor')
-    add_parser.add_argument('url', help='Amazon product URL')
-    add_parser.add_argument('target_price', help='Target price (e.g., R$80,99 or 80.99)')
+    add_parser = subparsers.add_parser('add', help='Adicionar produto para monitorar')
+    add_parser.add_argument('url', help='URL do produto no Zaffari')
+    add_parser.add_argument('target_price', help='Preço alvo (ex: R$80,99 ou 80.99)')
 
     # list command
-    subparsers.add_parser('list', help='List all monitored products')
+    subparsers.add_parser('list', help='Listar todos os produtos monitorados')
 
     # check command
-    subparsers.add_parser('check', help='Check prices and show alerts')
+    subparsers.add_parser('check', help='Verificar preços e alertas')
 
     # update command
-    subparsers.add_parser('update', help='Update prices for all products')
+    subparsers.add_parser('update', help='Atualizar preços de todos os produtos')
 
     # alerts command
-    subparsers.add_parser('alerts', help='Show triggered alerts')
+    subparsers.add_parser('alerts', help='Mostrar alertas disparados')
 
     # history command
-    history_parser = subparsers.add_parser('history', help='Show price history for a product')
-    history_parser.add_argument('product_id', type=int, help='Product ID')
-    history_parser.add_argument('--days', type=int, default=30, help='Number of days (default: 30)')
+    history_parser = subparsers.add_parser('history', help='Mostrar histórico de preços')
+    history_parser.add_argument('product_id', type=int, help='ID do produto')
+    history_parser.add_argument('--days', type=int, default=30, help='Número de dias (padrão: 30)')
 
     # detail command
-    detail_parser = subparsers.add_parser('detail', help='Show detailed product information')
-    detail_parser.add_argument('product_id', type=int, help='Product ID')
+    detail_parser = subparsers.add_parser('detail', help='Mostrar detalhes do produto')
+    detail_parser.add_argument('product_id', type=int, help='ID do produto')
 
     # remove command
-    remove_parser = subparsers.add_parser('remove', help='Remove a product from monitoring')
-    remove_parser.add_argument('product_id', type=int, help='Product ID')
+    remove_parser = subparsers.add_parser('remove', help='Remover produto do monitoramento')
+    remove_parser.add_argument('product_id', type=int, help='ID do produto')
 
     args = parser.parse_args()
 

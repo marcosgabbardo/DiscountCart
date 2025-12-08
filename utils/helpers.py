@@ -1,10 +1,11 @@
 """
-Helper utilities for Amazon Price Monitor.
+Helper utilities for Zaffari Price Monitor.
 """
 
 import re
 from decimal import Decimal, InvalidOperation
 from typing import Optional
+from urllib.parse import urlparse
 
 
 def parse_price(price_str: str) -> Optional[Decimal]:
@@ -22,29 +23,20 @@ def parse_price(price_str: str) -> Optional[Decimal]:
         return None
 
     # Remove currency symbols, spaces, and common prefixes
-    # Note: Using explicit characters to avoid regex issues
     cleaned = price_str.strip()
     cleaned = cleaned.replace('R', '').replace('$', '').replace(' ', '')
 
-    # Handle empty string after cleaning
     if not cleaned:
         return None
 
-    # Check for shell variable expansion issue (value starts with , or .)
-    # This happens when user uses "R$80,99" and shell interprets $80 as variable
+    # Check for shell variable expansion issue
     if cleaned.startswith(',') or cleaned.startswith('.'):
-        # Try to warn user - this is likely a shell expansion issue
         return None
-
-    # Determine format and normalize
-    # Brazilian format: 1.234,56 (dot as thousand separator, comma as decimal)
-    # US format: 1,234.56 (comma as thousand separator, dot as decimal)
 
     has_comma = ',' in cleaned
     has_dot = '.' in cleaned
 
     if has_comma and has_dot:
-        # Both present - determine which is decimal separator
         comma_pos = cleaned.rfind(',')
         dot_pos = cleaned.rfind('.')
 
@@ -56,10 +48,7 @@ def parse_price(price_str: str) -> Optional[Decimal]:
             cleaned = cleaned.replace(',', '')
 
     elif has_comma:
-        # Only comma - assume decimal separator (Brazilian common format: 80,99)
         cleaned = cleaned.replace(',', '.')
-
-    # has_dot only or no separator - already in correct format
 
     try:
         return Decimal(cleaned)
@@ -81,9 +70,7 @@ def format_currency(value: Optional[Decimal], currency: str = 'R$') -> str:
     if value is None:
         return f"{currency} --"
 
-    # Format with 2 decimal places and Brazilian format
     formatted = f"{float(value):,.2f}"
-    # Convert to Brazilian format (swap . and ,)
     formatted = formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
 
     return f"{currency} {formatted}"
@@ -92,14 +79,6 @@ def format_currency(value: Optional[Decimal], currency: str = 'R$') -> str:
 def truncate_string(text: Optional[str], max_length: int = 50, suffix: str = '...') -> str:
     """
     Truncate a string to max length with suffix.
-
-    Args:
-        text: String to truncate
-        max_length: Maximum length including suffix
-        suffix: Suffix to append if truncated
-
-    Returns:
-        Truncated string
     """
     if not text:
         return ''
@@ -113,13 +92,6 @@ def truncate_string(text: Optional[str], max_length: int = 50, suffix: str = '..
 def format_percentage(value: Optional[float], decimals: int = 1) -> str:
     """
     Format a float as percentage string.
-
-    Args:
-        value: Float value (e.g., 15.5 for 15.5%)
-        decimals: Number of decimal places
-
-    Returns:
-        Formatted percentage string
     """
     if value is None:
         return '--%'
@@ -127,47 +99,40 @@ def format_percentage(value: Optional[float], decimals: int = 1) -> str:
     return f"{value:.{decimals}f}%"
 
 
-def validate_amazon_url(url: str) -> bool:
+def validate_zaffari_url(url: str) -> bool:
     """
-    Validate if URL is a valid Amazon product URL.
+    Validate if URL is a valid Zaffari product URL.
 
     Args:
         url: URL to validate
 
     Returns:
-        True if valid Amazon URL
+        True if valid Zaffari URL
     """
-    amazon_patterns = [
-        r'amazon\.com\.br',
-        r'amazon\.com',
-        r'amazon\.co\.',
-        r'amzn\.to',
-    ]
-
-    url_lower = url.lower()
-    return any(re.search(pattern, url_lower) for pattern in amazon_patterns)
+    parsed = urlparse(url)
+    return (
+        parsed.netloc in ['www.zaffari.com.br', 'zaffari.com.br'] and
+        '/p' in parsed.path
+    )
 
 
-def extract_asin_from_url(url: str) -> Optional[str]:
+def extract_sku_from_url(url: str) -> Optional[str]:
     """
-    Extract ASIN from Amazon URL.
+    Extract SKU from Zaffari URL.
 
     Args:
-        url: Amazon product URL
+        url: Zaffari product URL
 
     Returns:
-        ASIN string or None
+        SKU string or None
     """
-    patterns = [
-        r'/dp/([A-Z0-9]{10})',
-        r'/gp/product/([A-Z0-9]{10})',
-        r'/product/([A-Z0-9]{10})',
-        r'asin=([A-Z0-9]{10})',
-    ]
+    # URL format: https://www.zaffari.com.br/product-name-SKU/p
+    match = re.search(r'-(\d+)/p', url)
+    if match:
+        return match.group(1)
 
-    for pattern in patterns:
-        match = re.search(pattern, url, re.IGNORECASE)
-        if match:
-            return match.group(1).upper()
+    match = re.search(r'/(\d+)/p', url)
+    if match:
+        return match.group(1)
 
     return None

@@ -91,41 +91,57 @@ class AmazonScraper:
         if not price_text:
             return None
 
-        # Remove currency symbols and extra whitespace
+        original_text = price_text  # Keep original for debugging
         price_text = price_text.strip()
 
-        # Handle Brazilian format: R$ 1.234,56
-        # Remove R$ and any other currency symbols
-        price_text = re.sub(r'[R$\s]', '', price_text)
+        # Remove ALL non-numeric characters except dots and commas
+        # This handles R$, spaces, non-breaking spaces, and any other chars
+        price_text = re.sub(r'[^\d.,]', '', price_text)
 
-        # Handle thousand separators and decimal
+        if not price_text:
+            return None
+
+        # Handle Brazilian format: R$ 1.234,56
         # Brazilian: 1.234,56 -> 1234.56
         if ',' in price_text and '.' in price_text:
-            # Has both: assume Brazilian format (. = thousand, , = decimal)
+            # Has both: Brazilian format (. = thousand, , = decimal)
             price_text = price_text.replace('.', '').replace(',', '.')
         elif ',' in price_text:
-            # Only comma: assume it's decimal separator (e.g., 39,60 -> 39.60)
+            # Only comma: decimal separator (e.g., 39,60 -> 39.60)
             price_text = price_text.replace(',', '.')
+            # After converting comma to dot, check if we need to handle "39.600" case
+            if '.' in price_text:
+                parts = price_text.split('.')
+                if len(parts) == 2:
+                    before_dot = parts[0]
+                    after_dot = parts[1]
+                    # If 3 digits after dot AND small number before, it's mangled
+                    if len(after_dot) == 3 and len(before_dot) <= 3:
+                        price_text = f"{before_dot}.{after_dot[:2]}"
         elif '.' in price_text:
-            # Only dot - need to determine if decimal or thousand separator
+            # Only dot - determine if decimal or thousand separator
             parts = price_text.split('.')
             if len(parts) == 2:
                 before_dot = parts[0]
                 after_dot = parts[1]
-                # If 2 digits after dot, it's a decimal (e.g., 39.60)
                 if len(after_dot) == 2:
-                    pass  # Keep as is, it's already correct format
-                # If 3 digits after dot AND before is small number, probably mangled price
-                # e.g., "39.600" should be "39.60" (R$ 39,60)
+                    pass  # Already correct decimal format
                 elif len(after_dot) == 3 and len(before_dot) <= 3:
-                    # This is likely "XX.YY0" where the last 0 is spurious
+                    # "39.600" should be "39.60" (mangled Brazilian price)
                     price_text = f"{before_dot}.{after_dot[:2]}"
                 elif len(after_dot) == 3:
                     # Large number with thousand separator (e.g., "1.234" -> 1234)
                     price_text = price_text.replace('.', '')
 
         try:
-            return Decimal(price_text)
+            result = Decimal(price_text)
+            # Sanity check: if result > 10000 and looks like it could be cents
+            # Check if dividing by 100 gives a reasonable price (10-500)
+            if result > 10000:
+                cents_price = result / 100
+                if 10 <= cents_price <= 500:
+                    return cents_price
+            return result
         except Exception:
             return None
 

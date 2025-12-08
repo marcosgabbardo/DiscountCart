@@ -36,11 +36,11 @@ class ProductService:
         # Check if product already exists (use SKU as identifier)
         existing = self.get_product_by_sku(scraped.sku)
         if existing:
-            # Update target price and reactivate if needed
+            # Update target price, current price and reactivate
             self._update_product_target(existing.id, target_price)
-            existing.target_price = target_price
-            existing.is_active = True
-            return existing
+            if scraped.price:
+                self._update_current_price(existing.id, scraped.price)
+            return self.get_product_by_id(existing.id)
 
         # Insert new product
         query = """
@@ -77,6 +77,15 @@ class ProductService:
             WHERE id = %s
         """
         self.db.execute_query(query, (float(target_price), product_id), fetch=False)
+
+    def _update_current_price(self, product_id: int, price: Decimal) -> None:
+        """Update current price."""
+        query = """
+            UPDATE products
+            SET current_price = %s
+            WHERE id = %s
+        """
+        self.db.execute_query(query, (float(price), product_id), fetch=False)
 
     def get_product_by_id(self, product_id: int) -> Optional[Product]:
         """Get product by ID."""

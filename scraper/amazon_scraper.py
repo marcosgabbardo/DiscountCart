@@ -186,16 +186,39 @@ class AmazonScraper:
                 break
 
         if one_time_label:
-            # Find the parent container and look for price within it
+            # Find the parent container and look for price parts within it
+            # Price is split into a-price-whole (integer) and a-price-fraction (decimal)
             parent = one_time_label.find_parent(['div', 'section', 'tr', 'td'])
             while parent and not product.price:
-                price_elem = parent.select_one('.a-price .a-offscreen')
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    parsed_price = self._parse_price(price_text)
-                    if parsed_price and 10 <= parsed_price <= 50000:
-                        product.price = parsed_price
-                        break
+                # Try to get price from a-price-whole + a-price-fraction
+                price_whole = parent.select_one('.a-price-whole')
+                price_fraction = parent.select_one('.a-price-fraction')
+
+                if price_whole:
+                    whole_text = price_whole.get_text(strip=True).replace('.', '').replace(',', '')
+                    fraction_text = '00'
+                    if price_fraction:
+                        fraction_text = price_fraction.get_text(strip=True)
+
+                    try:
+                        price_str = f"{whole_text}.{fraction_text}"
+                        parsed_price = Decimal(price_str)
+                        if 10 <= parsed_price <= 50000:
+                            product.price = parsed_price
+                            break
+                    except:
+                        pass
+
+                # Also try .a-offscreen as fallback within this parent
+                if not product.price:
+                    price_elem = parent.select_one('.a-price .a-offscreen')
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        parsed_price = self._parse_price(price_text)
+                        if parsed_price and 10 <= parsed_price <= 50000:
+                            product.price = parsed_price
+                            break
+
                 # Go up one more level
                 parent = parent.find_parent(['div', 'section', 'tr', 'td'])
 

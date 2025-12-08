@@ -104,8 +104,16 @@ class AmazonScraper:
             # Has both: assume Brazilian format (. = thousand, , = decimal)
             price_text = price_text.replace('.', '').replace(',', '.')
         elif ',' in price_text:
-            # Only comma: assume it's decimal separator
+            # Only comma: assume it's decimal separator (e.g., 39,60 -> 39.60)
             price_text = price_text.replace(',', '.')
+        # If only dot: check if it's a decimal or thousand separator
+        elif '.' in price_text:
+            # If there are exactly 3 digits after the dot, it's likely a thousand separator
+            # e.g., "1.234" should be 1234, not 1.234
+            parts = price_text.split('.')
+            if len(parts) == 2 and len(parts[1]) == 3:
+                # Likely thousand separator, remove it
+                price_text = price_text.replace('.', '')
 
         try:
             return Decimal(price_text)
@@ -172,8 +180,8 @@ class AmazonScraper:
             for price_elem in buy_box.select(selector):
                 price_text = price_elem.get_text(strip=True)
                 parsed_price = self._parse_price(price_text)
-                # Filter: must be >= R$10 to ignore price per liter/ml/unit
-                if parsed_price and parsed_price >= 10:
+                # Filter: R$10 <= price <= R$50000 (ignore per-unit prices and parsing errors)
+                if parsed_price and 10 <= parsed_price <= 50000:
                     all_prices.append(parsed_price)
 
         # Get the highest of the two lowest prices (one-time purchase > subscription)

@@ -145,12 +145,11 @@ class AmazonScraper:
             product.title = title_elem.get_text(strip=True)
 
         # Extract price - Get one-time purchase price (not subscription)
-        # Strategy: Get prices from BUY BOX only, then pick the highest of the two lowest
-        # (subscription and one-time are usually the two lowest prices in buy box)
+        # Filter out: price per liter/unit (< R$10) and pick highest of two lowest real prices
 
         all_prices = []
 
-        # IMPORTANT: Only look in the buy box area to avoid prices from related products
+        # IMPORTANT: Only look in the buy box area
         buy_box = soup.select_one('#desktop_buybox')
         if not buy_box:
             buy_box = soup.select_one('#buybox')
@@ -173,16 +172,15 @@ class AmazonScraper:
             for price_elem in buy_box.select(selector):
                 price_text = price_elem.get_text(strip=True)
                 parsed_price = self._parse_price(price_text)
-                if parsed_price and parsed_price > 0:
+                # Filter: must be >= R$10 to ignore price per liter/ml/unit
+                if parsed_price and parsed_price >= 10:
                     all_prices.append(parsed_price)
 
-        # If we found prices, get the highest of the two smallest
-        # (this filters out crazy high prices from other parts of the page)
+        # Get the highest of the two lowest prices (one-time purchase > subscription)
         if all_prices:
             unique_prices = sorted(set(all_prices))
-            # Take up to 2 lowest prices and pick the max (one-time purchase)
-            reasonable_prices = unique_prices[:2]
-            product.price = max(reasonable_prices)
+            # Take up to 2 lowest and pick max (one-time purchase)
+            product.price = max(unique_prices[:2])
 
         # Extract original price (if on sale)
         original_selectors = [

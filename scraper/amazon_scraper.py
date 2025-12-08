@@ -176,75 +176,55 @@ class AmazonScraper:
 
         product.price = None
 
-        # Strategy 1: Look for "one-time purchase" / "Comprar uma única vez" section
-        one_time_selectors = [
-            '#oneTimeBuyBox .a-price .a-offscreen',
-            '#newBuyBoxPrice',
-            '#corePrice_feature_div .a-price .a-offscreen',
-            '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
-            '#apex_offerDisplay_desktop .a-price .a-offscreen',
-            '#sns-base-price .a-price .a-offscreen',
-            '#buybox .a-price .a-offscreen',
-            '#desktop_buybox .a-price .a-offscreen',
-        ]
+        # Strategy 1: Find "Comprar uma única vez" text and get price near it
+        # Look for the bold text that indicates one-time purchase
+        one_time_label = None
+        for elem in soup.find_all(['span', 'div', 'label']):
+            elem_text = elem.get_text(strip=True).lower()
+            if 'única vez' in elem_text or 'one-time' in elem_text:
+                one_time_label = elem
+                break
 
-        for selector in one_time_selectors:
-            price_elem = soup.select_one(selector)
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
-                if parsed_price and 10 <= parsed_price <= 50000:
-                    product.price = parsed_price
-                    break
+        if one_time_label:
+            # Find the parent container and look for price within it
+            parent = one_time_label.find_parent(['div', 'section', 'tr', 'td'])
+            while parent and not product.price:
+                price_elem = parent.select_one('.a-price .a-offscreen')
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
+                    if parsed_price and 10 <= parsed_price <= 50000:
+                        product.price = parsed_price
+                        break
+                # Go up one more level
+                parent = parent.find_parent(['div', 'section', 'tr', 'td'])
 
-        # Strategy 2: If not found, look for accordion/tabs with "uma única vez"
+        # Strategy 2: Look for price in common buybox selectors
         if not product.price:
-            # Find all sections that might contain buy options
-            buy_sections = soup.select(
-                '#buybox-tabular-content .a-accordion-row, '
-                '#buybox .a-box, '
-                '#qualifiedBuybox .a-section, '
-                '#desktop_buybox .a-section, '
-                '.snsAccordionRowMiddle, '
-                '#snsAccordionRowMiddle'
-            )
-            for section in buy_sections:
-                section_text = section.get_text().lower()
-                # Check if this is the one-time purchase option
-                if 'única vez' in section_text or 'one-time' in section_text:
-                    price_elem = section.select_one('.a-price .a-offscreen')
-                    if price_elem:
-                        price_text = price_elem.get_text(strip=True)
-                        parsed_price = self._parse_price(price_text)
-                        if parsed_price and 10 <= parsed_price <= 50000:
-                            product.price = parsed_price
-                            break
+            one_time_selectors = [
+                '#corePrice_feature_div .a-price .a-offscreen',
+                '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
+                '#apex_offerDisplay_desktop .a-price .a-offscreen',
+                '#oneTimeBuyBox .a-price .a-offscreen',
+                '#newBuyBoxPrice',
+            ]
+            for selector in one_time_selectors:
+                price_elem = soup.select_one(selector)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
+                    if parsed_price and 10 <= parsed_price <= 50000:
+                        product.price = parsed_price
+                        break
 
-        # Strategy 3: Search entire buybox for any price element near "única vez" text
-        if not product.price:
-            buybox = soup.select_one('#desktop_buybox, #buybox, #qualifiedBuybox')
-            if buybox:
-                # Get all price elements in buybox
-                all_prices_in_buybox = buybox.select('.a-price .a-offscreen')
-                for price_elem in all_prices_in_buybox:
-                    # Check parent/sibling text for "única vez"
-                    parent = price_elem.find_parent(class_='a-section')
-                    if parent:
-                        parent_text = parent.get_text().lower()
-                        if 'única vez' in parent_text:
-                            price_text = price_elem.get_text(strip=True)
-                            parsed_price = self._parse_price(price_text)
-                            if parsed_price and 10 <= parsed_price <= 50000:
-                                product.price = parsed_price
-                                break
-
-        # Strategy 4: Fallback - get first reasonable price from page
+        # Strategy 3: Fallback - get first reasonable price from buybox
         if not product.price:
             fallback_selectors = [
+                '#desktop_buybox .a-price .a-offscreen',
+                '#buybox .a-price .a-offscreen',
                 '.priceToPay .a-offscreen',
                 '#priceblock_ourprice',
                 '#priceblock_dealprice',
-                '#priceblock_saleprice',
                 '.a-price .a-offscreen',
             ]
             for selector in fallback_selectors:

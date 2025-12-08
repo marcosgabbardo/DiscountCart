@@ -106,14 +106,23 @@ class AmazonScraper:
         elif ',' in price_text:
             # Only comma: assume it's decimal separator (e.g., 39,60 -> 39.60)
             price_text = price_text.replace(',', '.')
-        # If only dot: check if it's a decimal or thousand separator
         elif '.' in price_text:
-            # If there are exactly 3 digits after the dot, it's likely a thousand separator
-            # e.g., "1.234" should be 1234, not 1.234
+            # Only dot - need to determine if decimal or thousand separator
             parts = price_text.split('.')
-            if len(parts) == 2 and len(parts[1]) == 3:
-                # Likely thousand separator, remove it
-                price_text = price_text.replace('.', '')
+            if len(parts) == 2:
+                before_dot = parts[0]
+                after_dot = parts[1]
+                # If 2 digits after dot, it's a decimal (e.g., 39.60)
+                if len(after_dot) == 2:
+                    pass  # Keep as is, it's already correct format
+                # If 3 digits after dot AND before is small number, probably mangled price
+                # e.g., "39.600" should be "39.60" (R$ 39,60)
+                elif len(after_dot) == 3 and len(before_dot) <= 3:
+                    # This is likely "XX.YY0" where the last 0 is spurious
+                    price_text = f"{before_dot}.{after_dot[:2]}"
+                elif len(after_dot) == 3:
+                    # Large number with thousand separator (e.g., "1.234" -> 1234)
+                    price_text = price_text.replace('.', '')
 
         try:
             return Decimal(price_text)

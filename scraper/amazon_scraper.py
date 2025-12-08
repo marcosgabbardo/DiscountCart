@@ -186,41 +186,33 @@ class AmazonScraper:
                 break
 
         if one_time_label:
-            # Find the parent container and look for price parts within it
-            # Price is split into a-price-whole (integer) and a-price-fraction (decimal)
-            parent = one_time_label.find_parent(['div', 'section', 'tr', 'td'])
-            while parent and not product.price:
-                # Try to get price from a-price-whole + a-price-fraction
-                price_whole = parent.select_one('.a-price-whole')
-                price_fraction = parent.select_one('.a-price-fraction')
+            # Try to find price AFTER the "única vez" label using find_next
+            # This works better when price is a sibling, not a child
+            price_whole = one_time_label.find_next(class_='a-price-whole')
+            if price_whole:
+                whole_text = price_whole.get_text(strip=True).replace('.', '').replace(',', '')
+                # Find the fraction that comes right after
+                price_fraction = price_whole.find_next(class_='a-price-fraction')
+                fraction_text = '00'
+                if price_fraction:
+                    fraction_text = price_fraction.get_text(strip=True)
 
-                if price_whole:
-                    whole_text = price_whole.get_text(strip=True).replace('.', '').replace(',', '')
-                    fraction_text = '00'
-                    if price_fraction:
-                        fraction_text = price_fraction.get_text(strip=True)
+                try:
+                    price_str = f"{whole_text}.{fraction_text}"
+                    parsed_price = Decimal(price_str)
+                    if 10 <= parsed_price <= 50000:
+                        product.price = parsed_price
+                except:
+                    pass
 
-                    try:
-                        price_str = f"{whole_text}.{fraction_text}"
-                        parsed_price = Decimal(price_str)
-                        if 10 <= parsed_price <= 50000:
-                            product.price = parsed_price
-                            break
-                    except:
-                        pass
-
-                # Also try .a-offscreen as fallback within this parent
-                if not product.price:
-                    price_elem = parent.select_one('.a-price .a-offscreen')
-                    if price_elem:
-                        price_text = price_elem.get_text(strip=True)
-                        parsed_price = self._parse_price(price_text)
-                        if parsed_price and 10 <= parsed_price <= 50000:
-                            product.price = parsed_price
-                            break
-
-                # Go up one more level
-                parent = parent.find_parent(['div', 'section', 'tr', 'td'])
+            # Fallback: try .a-offscreen after the label
+            if not product.price:
+                price_elem = one_time_label.find_next(class_='a-offscreen')
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
+                    if parsed_price and 10 <= parsed_price <= 50000:
+                        product.price = parsed_price
 
         # Strategy 2: Look for price in common buybox selectors
         if not product.price:

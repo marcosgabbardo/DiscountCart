@@ -135,12 +135,6 @@ class AmazonScraper:
 
         try:
             result = Decimal(price_text)
-            # Sanity check: if result > 10000 and looks like it could be cents
-            # Check if dividing by 100 gives a reasonable price (10-500)
-            if result > 10000:
-                cents_price = result / 100
-                if 10 <= cents_price <= 500:
-                    return cents_price
             return result
         except Exception:
             return None
@@ -177,43 +171,62 @@ class AmazonScraper:
         if title_elem:
             product.title = title_elem.get_text(strip=True)
 
-        # Extract price - Get one-time purchase price (not subscription)
-        # Filter out: price per liter/unit (< R$10) and pick highest of two lowest real prices
+        # Extract price - Get "Compra Uma Única Vez" (one-time purchase) price
+        # NOT the subscription/recurring price
 
-        all_prices = []
+        product.price = None
 
-        # IMPORTANT: Only look in the buy box area
-        buy_box = soup.select_one('#desktop_buybox')
-        if not buy_box:
-            buy_box = soup.select_one('#buybox')
-        if not buy_box:
-            buy_box = soup.select_one('#centerCol')
-        if not buy_box:
-            buy_box = soup
-
-        # Specific selectors for the main price display
-        price_selectors = [
+        # Strategy 1: Look for "one-time purchase" / "Comprar uma única vez" section
+        # This section typically has id containing "oneTimeBuyBox" or similar
+        one_time_selectors = [
+            '#oneTimeBuyBox .a-price .a-offscreen',
+            '#newBuyBoxPrice',
             '#corePrice_feature_div .a-price .a-offscreen',
             '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
-            '.priceToPay .a-offscreen',
-            '#priceblock_ourprice',
-            '#priceblock_dealprice',
-            '#priceblock_saleprice',
         ]
 
-        for selector in price_selectors:
-            for price_elem in buy_box.select(selector):
+        for selector in one_time_selectors:
+            price_elem = soup.select_one(selector)
+            if price_elem:
                 price_text = price_elem.get_text(strip=True)
                 parsed_price = self._parse_price(price_text)
-                # Filter: R$10 <= price <= R$50000 (ignore per-unit prices and parsing errors)
                 if parsed_price and 10 <= parsed_price <= 50000:
-                    all_prices.append(parsed_price)
+                    product.price = parsed_price
+                    break
 
-        # Get the highest of the two lowest prices (one-time purchase > subscription)
-        if all_prices:
-            unique_prices = sorted(set(all_prices))
-            # Take up to 2 lowest and pick max (one-time purchase)
-            product.price = max(unique_prices[:2])
+        # Strategy 2: If not found, look for accordion/tabs with "uma única vez"
+        if not product.price:
+            # Find all accordion items or buy options
+            buy_options = soup.select('#buybox-tabular-content .a-accordion-row, #buybox .a-box')
+            for option in buy_options:
+                option_text = option.get_text().lower()
+                # Check if this is the one-time purchase option
+                if 'única vez' in option_text or 'one-time' in option_text or 'sem recorrência' in option_text:
+                    price_elem = option.select_one('.a-price .a-offscreen, .a-price-whole')
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        parsed_price = self._parse_price(price_text)
+                        if parsed_price and 10 <= parsed_price <= 50000:
+                            product.price = parsed_price
+                            break
+
+        # Strategy 3: Fallback - get price from main price display
+        if not product.price:
+            fallback_selectors = [
+                '.priceToPay .a-offscreen',
+                '#priceblock_ourprice',
+                '#priceblock_dealprice',
+                '#priceblock_saleprice',
+                '.a-price .a-offscreen',
+            ]
+            for selector in fallback_selectors:
+                price_elem = soup.select_one(selector)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
+                    if parsed_price and 10 <= parsed_price <= 50000:
+                        product.price = parsed_price
+                        break
 
         # Extract original price (if on sale)
         original_selectors = [

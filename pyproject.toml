@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amazon-price-monitor"
+version = "1.0.0"
+description = "Monitor de precos de produtos da Amazon Brasil"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "mysql-connector-python>=8.0.0",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "lxml>=4.9.0",
+    "python-dotenv>=1.0.0",
+    "tabulate>=0.9.0",
+]
+
+[project.scripts]
+price-monitor = "price_monitor:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.setuptools]
+py-modules = ["price_monitor"]
+packages = ["config", "database", "scraper", "services", "utils"]

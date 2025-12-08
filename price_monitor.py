@@ -153,10 +153,10 @@ def check_prices():
                 print(f"   Savings: {format_currency(savings)}")
                 print(f"   URL: {product.url}")
 
-                # Send notifications
-                alert_service.send_console_notification(
+                # Print alert
+                alert_service.print_alert(
                     product,
-                    "Price has reached your target!"
+                    "Preco atingiu seu alvo!"
                 )
 
             print("\n" + "=" * 60)
@@ -203,12 +203,12 @@ def update_prices():
         newly_triggered = alert_service.check_alerts(updated)
 
         if newly_triggered:
-            print(f"\n🔔 {len(newly_triggered)} new alert(s) triggered!")
+            print(f"\n{len(newly_triggered)} novo(s) alerta(s) disparado(s)!")
             for item in newly_triggered:
                 product = item['product']
-                alert_service.send_console_notification(
+                alert_service.print_alert(
                     product,
-                    f"Alert triggered at {format_currency(item['triggered_price'])}"
+                    f"Alerta disparado em {format_currency(item['triggered_price'])}"
                 )
 
         # Show summary

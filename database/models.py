@@ -2,10 +2,10 @@
 Database models and data classes for Amazon Price Monitor.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional
 from enum import Enum
 
 
@@ -14,13 +14,6 @@ class AlertType(Enum):
     TARGET_REACHED = 'target_reached'
     PRICE_DROP = 'price_drop'
     BELOW_AVERAGE = 'below_average'
-
-
-class NotificationType(Enum):
-    """Types of notifications."""
-    CONSOLE = 'console'
-    EMAIL = 'email'
-    TELEGRAM = 'telegram'
 
 
 @dataclass
@@ -148,37 +141,6 @@ class Alert:
             is_active=data.get('is_active', True),
             created_at=data.get('created_at'),
             updated_at=data.get('updated_at'),
-        )
-
-
-@dataclass
-class Notification:
-    """Represents a notification record."""
-    id: Optional[int] = None
-    alert_id: int = 0
-    product_id: int = 0
-    message: str = ''
-    notification_type: NotificationType = NotificationType.CONSOLE
-    was_sent: bool = False
-    sent_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-
-    @classmethod
-    def from_dict(cls, data: dict) -> 'Notification':
-        """Create Notification from dictionary."""
-        notif_type = data.get('notification_type', 'console')
-        if isinstance(notif_type, str):
-            notif_type = NotificationType(notif_type)
-
-        return cls(
-            id=data.get('id'),
-            alert_id=data.get('alert_id', 0),
-            product_id=data.get('product_id', 0),
-            message=data.get('message', ''),
-            notification_type=notif_type,
-            was_sent=data.get('was_sent', False),
-            sent_at=data.get('sent_at'),
-            created_at=data.get('created_at'),
         )
 
 

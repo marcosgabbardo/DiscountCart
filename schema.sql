@@ -57,22 +57,6 @@ CREATE TABLE IF NOT EXISTS alerts (
     INDEX idx_triggered (is_triggered)
 );
 
--- Table: notifications
--- Stores notification history
-CREATE TABLE IF NOT EXISTS notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    alert_id INT NOT NULL,
-    product_id INT NOT NULL,
-    message TEXT NOT NULL,
-    notification_type ENUM('console', 'email', 'telegram') DEFAULT 'console',
-    was_sent BOOLEAN DEFAULT FALSE,
-    sent_at TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-    INDEX idx_alert_notification (alert_id)
-);
-
 -- View: product_summary
 -- Provides a quick summary of products with their alert status
 CREATE OR REPLACE VIEW product_summary AS

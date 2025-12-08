@@ -32,17 +32,6 @@ class Settings:
         self.CHECK_INTERVAL_MINUTES = int(os.getenv('CHECK_INTERVAL_MINUTES', '60'))
         self.PRICE_DROP_THRESHOLD_PERCENT = float(os.getenv('PRICE_DROP_THRESHOLD_PERCENT', '10'))
 
-        # Telegram settings (optional)
-        self.TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-        self.TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-
-        # Email settings (optional)
-        self.SMTP_HOST = os.getenv('SMTP_HOST')
-        self.SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-        self.SMTP_USER = os.getenv('SMTP_USER')
-        self.SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-        self.NOTIFICATION_EMAIL = os.getenv('NOTIFICATION_EMAIL')
-
         # User agents for scraping (rotated to avoid detection)
         self.USER_AGENTS = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -56,11 +45,3 @@ class Settings:
     def database_url(self) -> str:
         """Returns the MySQL connection URL."""
         return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-
-    def has_telegram_config(self) -> bool:
-        """Check if Telegram notifications are configured."""
-        return bool(self.TELEGRAM_BOT_TOKEN and self.TELEGRAM_CHAT_ID)
-
-    def has_email_config(self) -> bool:
-        """Check if email notifications are configured."""
-        return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASSWORD and self.NOTIFICATION_EMAIL)

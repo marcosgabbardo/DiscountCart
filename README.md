@@ -1,208 +1,191 @@
-# Amazon Price Monitor 🛒
+# Amazon Price Monitor
 
-Monitor Amazon Brazil product prices and get alerts when prices drop to your target.
+Monitor de precos de produtos da Amazon Brasil. Receba alertas no terminal quando os precos atingirem seu alvo.
 
-## Features
+## Funcionalidades
 
-- **Add Products**: Monitor any Amazon Brazil product by URL
-- **Set Target Prices**: Define the price you want to pay
-- **Price History**: Track price changes over time
-- **Smart Alerts**: Get notified when:
-  - Price reaches your target
-  - Price drops below 7/30-day average
-  - New lowest price detected
-- **Statistics**: View average prices, lowest/highest prices
-- **Multiple Notifications**: Console, Email, and Telegram support
+- **Adicionar Produtos**: Monitore qualquer produto da Amazon Brasil via URL
+- **Definir Preco Alvo**: Defina o preco que deseja pagar
+- **Historico de Precos**: Acompanhe as variacoes de preco ao longo do tempo
+- **Alertas Inteligentes**: Seja notificado quando:
+  - Preco atinge seu alvo
+  - Preco cai abaixo da media de 7/30 dias
+  - Novo preco minimo detectado
+- **Estatisticas**: Visualize precos medios, minimos e maximos
 
-## Requirements
+## Requisitos
 
 - Python 3.8+
-- MySQL 5.7+ or MariaDB 10.3+
+- MySQL 5.7+ ou MariaDB 10.3+
 
-## Installation
+## Instalacao
 
-1. **Clone the repository**:
+1. **Clone o repositorio**:
 ```bash
 git clone https://github.com/yourusername/DiscountCart.git
 cd DiscountCart
 ```
 
-2. **Create virtual environment**:
+2. **Crie o ambiente virtual**:
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# or
+# ou
 venv\Scripts\activate  # Windows
 ```
 
-3. **Install dependencies**:
+3. **Instale as dependencias**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configure environment**:
+4. **Configure o ambiente**:
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials
+# Edite o .env com suas credenciais do banco de dados
 ```
 
-5. **Initialize database**:
+5. **Inicialize o banco de dados**:
 ```bash
 python price_monitor.py init-db
 ```
 
-## Configuration
+## Configuracao
 
-Edit the `.env` file with your settings:
+Edite o arquivo `.env` com suas configuracoes:
 
 ```env
-# Database Configuration
+# Configuracao do Banco de Dados
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_password
+DB_PASSWORD=sua_senha
 DB_NAME=amazon_price_monitor
 
-# Scraping Configuration
+# Configuracao do Scraping
 SCRAPE_DELAY_MIN=2
 SCRAPE_DELAY_MAX=5
 
-# Alert Configuration
+# Configuracao de Alertas
 PRICE_DROP_THRESHOLD_PERCENT=10
-
-# Optional: Telegram Notifications
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
 ```
 
-## Usage
+## Uso
 
-### Add a Product to Monitor
+### Adicionar um Produto para Monitorar
 
 ```bash
 python price_monitor.py add "https://www.amazon.com.br/dp/B0BTXDTD6H" "R$80,99"
 ```
 
-You can use different price formats:
+Formatos de preco aceitos:
 - `R$80,99`
 - `80,99`
 - `80.99`
 - `R$ 1.234,56`
 
-### List All Monitored Products
+### Listar Todos os Produtos Monitorados
 
 ```bash
 python price_monitor.py list
 ```
 
-Output:
+Saida:
 ```
-📦 Monitored Products (3)
+Monitored Products (3)
 --------------------------------------------------------------------------------
 ID   Product                                   Current       Target        Difference   Status
-1    Wild Side American Whiskey...             R$ 89,90      R$ 80,99      ⬇️ R$ 8,91   👀
-2    Echo Dot 5ª Geração...                    R$ 299,00     R$ 249,99     ⬇️ R$ 49,01  👀
-3    Kindle Paperwhite...                      R$ 499,00     R$ 499,00     ✅ R$ 0,00   ✅
+1    Wild Side American Whiskey...             R$ 89,90      R$ 80,99      R$ 8,91
+2    Echo Dot 5a Geracao...                    R$ 299,00     R$ 249,99     R$ 49,01
+3    Kindle Paperwhite...                      R$ 499,00     R$ 499,00     R$ 0,00      OK
 ```
 
-### Check Prices and Alerts
+### Verificar Precos e Alertas
 
 ```bash
 python price_monitor.py check
 ```
 
-### Update All Prices
+### Atualizar Todos os Precos
 
 ```bash
 python price_monitor.py update
 ```
 
-This fetches current prices from Amazon for all monitored products.
+Busca os precos atuais na Amazon para todos os produtos monitorados.
 
-### View Price History
+### Ver Historico de Precos
 
 ```bash
 python price_monitor.py history 1 --days 30
 ```
 
-### View Product Details
+### Ver Detalhes do Produto
 
 ```bash
 python price_monitor.py detail 1
 ```
 
-### View Triggered Alerts
+### Ver Alertas Disparados
 
 ```bash
 python price_monitor.py alerts
 ```
 
-### Remove a Product
+### Remover um Produto
 
 ```bash
 python price_monitor.py remove 1
 ```
 
-## Automation
+## Automacao
 
-### Using Cron (Linux/Mac)
+### Usando Cron (Linux/Mac)
 
-Add to crontab to check prices every hour:
+Adicione ao crontab para verificar precos a cada hora:
 
 ```bash
 crontab -e
 ```
 
-Add:
+Adicione:
 ```
 0 * * * * cd /path/to/DiscountCart && /path/to/venv/bin/python price_monitor.py update >> /var/log/price_monitor.log 2>&1
 ```
 
-### Using Task Scheduler (Windows)
+### Usando Task Scheduler (Windows)
 
-Create a scheduled task to run:
+Crie uma tarefa agendada para executar:
 ```
 python C:\path\to\DiscountCart\price_monitor.py update
 ```
 
-## Database Schema
+## Schema do Banco de Dados
 
-The application uses 4 main tables:
+A aplicacao usa 3 tabelas principais:
 
-- **products**: Monitored products with URLs and target prices
-- **price_history**: Historical price records
-- **alerts**: Alert configurations and status
-- **notifications**: Notification history
+- **products**: Produtos monitorados com URLs e precos alvo
+- **price_history**: Registros historicos de precos
+- **alerts**: Configuracoes e status dos alertas
 
-## Telegram Notifications Setup
+## Limitacoes
 
-1. Create a bot with [@BotFather](https://t.me/botfather)
-2. Get your chat ID from [@userinfobot](https://t.me/userinfobot)
-3. Add to `.env`:
-```env
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-TELEGRAM_CHAT_ID=123456789
-```
+- **Web Scraping**: Esta ferramenta usa web scraping que pode quebrar se a Amazon mudar a estrutura das paginas
+- **Rate Limiting**: Delays embutidos para evitar bloqueio pela Amazon
+- **Apenas Amazon Brasil**: Atualmente otimizado para amazon.com.br
 
-## Limitations
+## Melhorias Futuras
 
-- **Web Scraping**: This tool uses web scraping which may break if Amazon changes their page structure
-- **Rate Limiting**: Built-in delays to avoid being blocked by Amazon
-- **Amazon Brazil Only**: Currently optimized for amazon.com.br
+- [ ] Suporte para outras regioes da Amazon
+- [ ] Automacao com navegador (Selenium) para scraping mais confiavel
+- [ ] Predicao de precos baseada em dados historicos
+- [ ] Interface web dashboard
+- [ ] Comparacao de precos com outros e-commerces
 
-## Future Improvements
+## Licenca
 
-- [ ] Support for other Amazon regions
-- [ ] Browser automation (Selenium) for more reliable scraping
-- [ ] Price prediction based on historical data
-- [ ] Web dashboard interface
-- [ ] Mobile app notifications
-- [ ] Price comparison with other e-commerce sites
+MIT License - Veja o arquivo [LICENSE](LICENSE) para detalhes.
 
-## License
+## Aviso
 
-MIT License - See [LICENSE](LICENSE) file for details.
-
-## Disclaimer
-
-This tool is for personal use only. Be respectful of Amazon's terms of service and use responsibly. The developers are not responsible for any misuse of this tool.
+Esta ferramenta e apenas para uso pessoal. Respeite os termos de servico da Amazon e use com responsabilidade.

@@ -4,10 +4,9 @@ Alert service for managing price alerts and notifications.
 
 from decimal import Decimal
 from typing import Optional, List
-from datetime import datetime
 
-from database import get_db, Alert, Notification, Product
-from database.models import AlertType, NotificationType
+from database import get_db, Alert, Product
+from database.models import AlertType
 from config import settings
 
 
@@ -210,133 +209,18 @@ class AlertService:
 
         return alerts
 
-    def create_notification(
-        self,
-        alert_id: int,
-        product_id: int,
-        message: str,
-        notification_type: NotificationType = NotificationType.CONSOLE
-    ) -> Notification:
-        """Create a notification record."""
-        query = """
-            INSERT INTO notifications (alert_id, product_id, message, notification_type)
-            VALUES (%s, %s, %s, %s)
-        """
-        params = (alert_id, product_id, message, notification_type.value)
-
-        with self.db.get_cursor() as cursor:
-            cursor.execute(query, params)
-            notif_id = cursor.lastrowid
-
-        return self.get_notification_by_id(notif_id)
-
-    def get_notification_by_id(self, notif_id: int) -> Optional[Notification]:
-        """Get notification by ID."""
-        query = "SELECT * FROM notifications WHERE id = %s"
-        results = self.db.execute_query(query, (notif_id,))
-        if results:
-            return Notification.from_dict(results[0])
-        return None
-
-    def mark_notification_sent(self, notif_id: int) -> None:
-        """Mark notification as sent."""
-        query = "UPDATE notifications SET was_sent = TRUE, sent_at = NOW() WHERE id = %s"
-        self.db.execute_query(query, (notif_id,), fetch=False)
-
-    def get_pending_notifications(self) -> List[Notification]:
-        """Get notifications that haven't been sent."""
-        query = "SELECT * FROM notifications WHERE was_sent = FALSE ORDER BY created_at ASC"
-        results = self.db.execute_query(query)
-        return [Notification.from_dict(row) for row in results]
-
-    def send_console_notification(self, product: Product, message: str) -> None:
-        """Print notification to console."""
+    def print_alert(self, product: Product, message: str) -> None:
+        """Print alert notification to console."""
         print("\n" + "=" * 60)
-        print("🔔 PRICE ALERT!")
+        print("ALERTA DE PRECO!")
         print("=" * 60)
-        print(f"Product: {product.title[:50]}..." if product.title and len(product.title) > 50 else f"Product: {product.title}")
+        print(f"Produto: {product.title[:50]}..." if product.title and len(product.title) > 50 else f"Produto: {product.title}")
         print(f"ASIN: {product.asin}")
-        print(f"Current Price: R$ {product.current_price:.2f}")
-        print(f"Target Price: R$ {product.target_price:.2f}")
+        print(f"Preco Atual: R$ {product.current_price:.2f}")
+        print(f"Preco Alvo: R$ {product.target_price:.2f}")
         if product.current_price and product.target_price:
             savings = product.target_price - product.current_price
-            print(f"You save: R$ {savings:.2f}")
+            print(f"Economia: R$ {savings:.2f}")
         print(f"URL: {product.url}")
         print(message)
         print("=" * 60 + "\n")
-
-    def send_telegram_notification(self, product: Product, message: str) -> bool:
-        """Send notification via Telegram."""
-        if not settings.has_telegram_config():
-            return False
-
-        try:
-            import requests
-
-            text = f"""🔔 *ALERTA DE PREÇO!*
-
-*Produto:* {product.title}
-*Preço Atual:* R$ {product.current_price:.2f}
-*Preço Alvo:* R$ {product.target_price:.2f}
-*Economia:* R$ {(product.target_price - product.current_price):.2f}
-
-[Ver na Amazon]({product.url})
-
-{message}"""
-
-            url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
-            data = {
-                'chat_id': settings.TELEGRAM_CHAT_ID,
-                'text': text,
-                'parse_mode': 'Markdown',
-                'disable_web_page_preview': False,
-            }
-
-            response = requests.post(url, data=data, timeout=10)
-            return response.status_code == 200
-
-        except Exception as e:
-            print(f"Failed to send Telegram notification: {e}")
-            return False
-
-    def send_email_notification(self, product: Product, message: str) -> bool:
-        """Send notification via email."""
-        if not settings.has_email_config():
-            return False
-
-        try:
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"🔔 Alerta de Preço: {product.title[:50]}"
-            msg['From'] = settings.SMTP_USER
-            msg['To'] = settings.NOTIFICATION_EMAIL
-
-            html = f"""
-            <html>
-            <body>
-            <h2>🔔 Alerta de Preço!</h2>
-            <p><strong>Produto:</strong> {product.title}</p>
-            <p><strong>Preço Atual:</strong> R$ {product.current_price:.2f}</p>
-            <p><strong>Preço Alvo:</strong> R$ {product.target_price:.2f}</p>
-            <p><strong>Economia:</strong> R$ {(product.target_price - product.current_price):.2f}</p>
-            <p><a href="{product.url}">Ver na Amazon</a></p>
-            <p>{message}</p>
-            </body>
-            </html>
-            """
-
-            msg.attach(MIMEText(html, 'html'))
-
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.starttls()
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                server.send_message(msg)
-
-            return True
-
-        except Exception as e:
-            print(f"Failed to send email notification: {e}")
-            return False

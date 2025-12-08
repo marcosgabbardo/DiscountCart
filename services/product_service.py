@@ -2,8 +2,9 @@
 Product service for managing monitored products.
 """
 
+import math
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from database import get_db, Product, PriceHistory, ProductSummary
 from scraper import ZaffariScraper
@@ -198,6 +199,51 @@ class ProductService:
         if results and results[0]['avg_price']:
             return Decimal(str(results[0]['avg_price']))
         return None
+
+    def get_std_deviation(self, product_id: int, days: int = 30) -> Optional[Tuple[Decimal, Decimal]]:
+        """
+        Calculate average and standard deviation for the last N days.
+        Returns: (avg_price, std_deviation) or None
+        """
+        history = self.get_price_history(product_id, days)
+        if len(history) < 2:
+            return None
+
+        prices = [float(h.price) for h in history]
+        avg = sum(prices) / len(prices)
+        variance = sum((p - avg) ** 2 for p in prices) / len(prices)
+        std_dev = math.sqrt(variance)
+
+        return (Decimal(str(round(avg, 2))), Decimal(str(round(std_dev, 2))))
+
+    def get_products_below_std_deviation(self, days: int = 30) -> List[dict]:
+        """
+        Get products where current price is below (avg - 1 std deviation).
+        """
+        products = self.get_all_products(active_only=True)
+        results = []
+
+        for product in products:
+            if not product.current_price:
+                continue
+
+            stats = self.get_std_deviation(product.id, days)
+            if not stats:
+                continue
+
+            avg_price, std_dev = stats
+            threshold = avg_price - std_dev
+
+            if product.current_price <= threshold:
+                results.append({
+                    'product': product,
+                    'avg_price': avg_price,
+                    'std_deviation': std_dev,
+                    'threshold': threshold,
+                    'diff': float(threshold - product.current_price)
+                })
+
+        return results
 
     def deactivate_product(self, product_id: int) -> bool:
         """Deactivate a product (stop monitoring)."""

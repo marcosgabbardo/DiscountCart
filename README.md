@@ -1,191 +1,235 @@
-# Amazon Price Monitor
+# Zaffari Price Monitor
 
-Monitor de precos de produtos da Amazon Brasil. Receba alertas no terminal quando os precos atingirem seu alvo.
+A price monitoring tool for Zaffari supermarket products (Brazil). Get terminal alerts when prices reach your target.
 
-## Funcionalidades
+## Features
 
-- **Adicionar Produtos**: Monitore qualquer produto da Amazon Brasil via URL
-- **Definir Preco Alvo**: Defina o preco que deseja pagar
-- **Historico de Precos**: Acompanhe as variacoes de preco ao longo do tempo
-- **Alertas Inteligentes**: Seja notificado quando:
-  - Preco atinge seu alvo
-  - Preco cai abaixo da media de 7/30 dias
-  - Novo preco minimo detectado
-- **Estatisticas**: Visualize precos medios, minimos e maximos
+- **Add Products**: Monitor any Zaffari product via URL
+- **Set Target Price**: Define the price you want to pay
+- **Price History**: Track price variations over time
+- **Smart Alerts**: Get notified when:
+  - Price reaches your target
+  - Price drops below 7/30 day average
+  - Price falls 1 standard deviation below 30-day average
+  - New lowest price detected
+- **Statistics**: View average, minimum, and maximum prices
+- **Daily Scheduler**: Automatic updates at 8:00 AM with Excel reports
+- **Excel Reports**: Generated reports with price changes and alert status
 
-## Requisitos
+## Requirements
 
 - Python 3.8+
-- MySQL 5.7+ ou MariaDB 10.3+
+- MySQL 5.7+ or MariaDB 10.3+
 
-## Instalacao
+## Installation
 
-1. **Clone o repositorio**:
+1. **Clone the repository**:
 ```bash
 git clone https://github.com/yourusername/DiscountCart.git
 cd DiscountCart
 ```
 
-2. **Crie o ambiente virtual**:
+2. **Create virtual environment**:
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# ou
+# or
 venv\Scripts\activate  # Windows
 ```
 
-3. **Instale as dependencias**:
+3. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configure o ambiente**:
+4. **Configure environment**:
 ```bash
 cp .env.example .env
-# Edite o .env com suas credenciais do banco de dados
+# Edit .env with your database credentials
 ```
 
-5. **Inicialize o banco de dados**:
+5. **Initialize the database**:
 ```bash
 python price_monitor.py init-db
 ```
 
-## Configuracao
+## Configuration
 
-Edite o arquivo `.env` com suas configuracoes:
+Edit the `.env` file with your settings:
 
 ```env
-# Configuracao do Banco de Dados
+# Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=sua_senha
-DB_NAME=amazon_price_monitor
+DB_PASSWORD=your_password
+DB_NAME=zaffari_price_monitor
 
-# Configuracao do Scraping
+# Scraping Configuration
 SCRAPE_DELAY_MIN=2
 SCRAPE_DELAY_MAX=5
 
-# Configuracao de Alertas
+# Alert Configuration
 PRICE_DROP_THRESHOLD_PERCENT=10
 ```
 
-## Uso
+## Usage
 
-### Adicionar um Produto para Monitorar
+### Add a Product to Monitor
 
 ```bash
-python price_monitor.py add "https://www.amazon.com.br/dp/B0BTXDTD6H" "R$80,99"
+python price_monitor.py add "https://www.zaffari.com.br/produto-123/p" "R$80,99"
 ```
 
-Formatos de preco aceitos:
+Accepted price formats:
 - `R$80,99`
 - `80,99`
 - `80.99`
 - `R$ 1.234,56`
 
-### Listar Todos os Produtos Monitorados
+### List All Monitored Products
 
 ```bash
 python price_monitor.py list
 ```
 
-Saida:
+Output:
 ```
 Monitored Products (3)
 --------------------------------------------------------------------------------
 ID   Product                                   Current       Target        Difference   Status
-1    Wild Side American Whiskey...             R$ 89,90      R$ 80,99      R$ 8,91
-2    Echo Dot 5a Geracao...                    R$ 299,00     R$ 249,99     R$ 49,01
-3    Kindle Paperwhite...                      R$ 499,00     R$ 499,00     R$ 0,00      OK
+1    Presunto Cozido Fatiado Sadia...          R$ 6,99       R$ 6,55       R$ 0,44
+2    Queijo Mussarela President...             R$ 12,90      R$ 10,99      R$ 1,91
+3    Leite Integral Piracanjuba...             R$ 5,49       R$ 5,49       R$ 0,00      OK
 ```
 
-### Verificar Precos e Alertas
+### Check Prices and Alerts
 
 ```bash
 python price_monitor.py check
 ```
 
-### Atualizar Todos os Precos
+### Update All Prices
 
 ```bash
 python price_monitor.py update
 ```
 
-Busca os precos atuais na Amazon para todos os produtos monitorados.
+Fetches current prices from Zaffari for all monitored products.
 
-### Ver Historico de Precos
+### View Price History
 
 ```bash
 python price_monitor.py history 1 --days 30
 ```
 
-### Ver Detalhes do Produto
+### View Product Details
 
 ```bash
 python price_monitor.py detail 1
 ```
 
-### Ver Alertas Disparados
+### View Triggered Alerts
 
 ```bash
 python price_monitor.py alerts
 ```
 
-### Remover um Produto
+### Remove a Product
 
 ```bash
 python price_monitor.py remove 1
 ```
 
-## Automacao
+## Scheduler
 
-### Usando Cron (Linux/Mac)
+### Run the Daily Scheduler
 
-Adicione ao crontab para verificar precos a cada hora:
+The scheduler runs price updates daily at 8:00 AM and generates Excel reports:
+
+```bash
+python scheduler.py
+```
+
+### Run Update Immediately (for testing)
+
+```bash
+python scheduler.py --now
+```
+
+This will:
+1. Update all product prices
+2. Check for products at target price
+3. Check for products below standard deviation threshold
+4. Generate an Excel report with all price changes and alerts
+
+### Using Cron (Linux/Mac)
+
+Add to crontab for scheduled execution:
 
 ```bash
 crontab -e
 ```
 
-Adicione:
+Add:
 ```
-0 * * * * cd /path/to/DiscountCart && /path/to/venv/bin/python price_monitor.py update >> /var/log/price_monitor.log 2>&1
-```
-
-### Usando Task Scheduler (Windows)
-
-Crie uma tarefa agendada para executar:
-```
-python C:\path\to\DiscountCart\price_monitor.py update
+0 8 * * * cd /path/to/DiscountCart && /path/to/venv/bin/python scheduler.py --now >> /var/log/price_monitor.log 2>&1
 ```
 
-## Schema do Banco de Dados
+### Using Task Scheduler (Windows)
 
-A aplicacao usa 3 tabelas principais:
+Create a scheduled task to run:
+```
+python C:\path\to\DiscountCart\scheduler.py --now
+```
 
-- **products**: Produtos monitorados com URLs e precos alvo
-- **price_history**: Registros historicos de precos
-- **alerts**: Configuracoes e status dos alertas
+## Database Schema
 
-## Limitacoes
+The application uses 3 main tables:
 
-- **Web Scraping**: Esta ferramenta usa web scraping que pode quebrar se a Amazon mudar a estrutura das paginas
-- **Rate Limiting**: Delays embutidos para evitar bloqueio pela Amazon
-- **Apenas Amazon Brasil**: Atualmente otimizado para amazon.com.br
+- **products**: Monitored products with URLs and target prices
+- **price_history**: Historical price records
+- **alerts**: Alert configurations and status
 
-## Melhorias Futuras
+## Alert Types
 
-- [ ] Suporte para outras regioes da Amazon
-- [ ] Automacao com navegador (Selenium) para scraping mais confiavel
-- [ ] Predicao de precos baseada em dados historicos
-- [ ] Interface web dashboard
-- [ ] Comparacao de precos com outros e-commerces
+| Alert Type | Description |
+|------------|-------------|
+| `TARGET_REACHED` | Price reached or fell below target |
+| `PRICE_DROP` | Significant price drop detected |
+| `BELOW_AVERAGE` | Price below 7-day average |
+| `STD_DEVIATION` | Price 1 std deviation below 30-day average |
 
-## Licenca
+## Excel Reports
 
-MIT License - Veja o arquivo [LICENSE](LICENSE) para detalhes.
+Generated reports include:
+- Product ID and name
+- Previous and current price
+- Price variation percentage
+- Target price
+- 30-day average and standard deviation
+- Alert indicators (Target reached, Std deviation)
 
-## Aviso
+Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 
-Esta ferramenta e apenas para uso pessoal. Respeite os termos de servico da Amazon e use com responsabilidade.
+## Limitations
+
+- **Web Scraping**: This tool uses web scraping which may break if Zaffari changes page structure
+- **Rate Limiting**: Built-in delays to avoid being blocked
+- **Zaffari Brazil Only**: Currently optimized for zaffari.com.br
+
+## Future Improvements
+
+- [ ] Telegram/Discord notifications
+- [ ] Browser automation (Selenium) for more reliable scraping
+- [ ] Price prediction based on historical data
+- [ ] Web dashboard interface
+- [ ] Price comparison with other supermarkets
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This tool is for personal use only. Respect Zaffari's terms of service and use responsibly.

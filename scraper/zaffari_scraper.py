@@ -170,46 +170,13 @@ class ZaffariScraper:
                     product.title = title_text
                     break
 
-        # Extract price - Zaffari specific selector first, then VTEX common selectors
-        price_selectors = [
-            '.zaffarilab-zaffari-produto-1-x-ProductPriceSellingPriceValue',
-            '.vtex-product-price-1-x-sellingPrice',
-            '.vtex-product-price-1-x-currencyContainer',
-            '.vtex-store-components-3-x-sellingPrice',
-            '.skuBestPrice',
-            '.price-best-price',
-            '.product-price .best-price',
-            '[class*="sellingPrice"]',
-            '[class*="bestPrice"]',
-            '.price',
-        ]
-
-        for selector in price_selectors:
-            price_elem = soup.select_one(selector)
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
-                if parsed_price and parsed_price > 0:
-                    product.price = parsed_price
-                    break
-
-        # Try to get price from JSON-LD structured data
-        if not product.price:
-            script_tags = soup.find_all('script', type='application/ld+json')
-            for script in script_tags:
-                try:
-                    import json
-                    data = json.loads(script.string)
-                    if isinstance(data, dict):
-                        # Look for price in offers
-                        if 'offers' in data:
-                            offers = data['offers']
-                            if isinstance(offers, dict) and 'price' in offers:
-                                product.price = Decimal(str(offers['price']))
-                            elif isinstance(offers, list) and len(offers) > 0:
-                                product.price = Decimal(str(offers[0].get('price', 0)))
-                except:
-                    pass
+        # Extract price - Zaffari specific selector
+        price_elem = soup.select_one('.zaffarilab-zaffari-produto-1-x-ProductPriceSellingPrice .zaffarilab-zaffari-produto-1-x-ProductPriceSellingPriceValue')
+        if price_elem:
+            price_text = price_elem.get_text(strip=True)
+            parsed_price = self._parse_price(price_text)
+            if parsed_price and parsed_price > 0:
+                product.price = parsed_price
 
         # Extract original price (if on sale)
         original_selectors = [

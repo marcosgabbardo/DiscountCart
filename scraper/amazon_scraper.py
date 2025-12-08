@@ -144,29 +144,22 @@ class AmazonScraper:
         if title_elem:
             product.title = title_elem.get_text(strip=True)
 
-        # Extract price - try multiple selectors (ordered by specificity)
-        # More specific selectors first to get the main product price
-        price_selectors = [
-            # Main price display area (most reliable for current price)
-            '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen',
-            '#corePrice_desktop_feature_div .priceToPay .a-offscreen',
-            '.priceToPay .a-offscreen',
-            # Apex offer display (Buy Box price)
-            '#apex_offerDisplay_desktop .a-price .a-offscreen',
-            '#apex_desktop .a-price .a-offscreen',
-            # Core price feature divs
-            '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
-            '#corePrice_feature_div .a-price .a-offscreen',
-            # Legacy selectors
-            '#priceblock_ourprice',
-            '#priceblock_dealprice',
-            '#priceblock_saleprice',
-            # Generic price (last resort - may catch wrong price)
-            '#centerCol .a-price .a-offscreen',
-            '#buybox .a-price .a-offscreen',
+        # Extract price - IMPORTANT: Get "one-time purchase" price, NOT subscription price
+        # Products with "Subscribe & Save" show a lower subscription price that we want to avoid
+
+        # First, try to find the one-time purchase price specifically
+        # Look for the "Comprar uma única vez" / "One-time purchase" section
+        one_time_selectors = [
+            # One-time purchase box (when Subscribe & Save is available)
+            '#oneTimeBuyBox .a-price .a-offscreen',
+            '#oneTimeBuyBox .priceToPay .a-offscreen',
+            '#buyOneSection .a-price .a-offscreen',
+            # Accordion/tab for one-time purchase
+            '#newAccordionRow_1 .a-price .a-offscreen',
+            '#accordion_row_header_1 .a-price .a-offscreen',
         ]
 
-        for selector in price_selectors:
+        for selector in one_time_selectors:
             price_elem = soup.select_one(selector)
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
@@ -175,22 +168,58 @@ class AmazonScraper:
                     product.price = parsed_price
                     break
 
-        # Try to get price from the whole + fraction format (fallback)
+        # If no one-time price found, try general selectors but EXCLUDE subscription containers
         if not product.price:
-            # Try specific container first
-            price_container = soup.select_one('#corePriceDisplay_desktop_feature_div .a-price')
+            # Get all price containers, excluding subscription-related ones
+            subscription_containers = ['#snsPrice', '#subscribeAndSavePrice', '#sns-price', '#snsAccordionRowMiddle']
+
+            price_selectors = [
+                '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen',
+                '#corePrice_desktop_feature_div .priceToPay .a-offscreen',
+                '#apex_offerDisplay_desktop .a-price .a-offscreen',
+                '#priceblock_ourprice',
+                '#priceblock_dealprice',
+                '#centerCol .a-price .a-offscreen',
+            ]
+
+            for selector in price_selectors:
+                price_elem = soup.select_one(selector)
+                if price_elem:
+                    # Check if this price is inside a subscription container
+                    is_subscription = False
+                    for parent in price_elem.parents:
+                        if parent.get('id') in ['snsPrice', 'subscribeAndSavePrice', 'sns-base-price', 'snsAccordionRowMiddle']:
+                            is_subscription = True
+                            break
+                        parent_classes = parent.get('class', [])
+                        if any('sns' in c.lower() or 'subscribe' in c.lower() for c in parent_classes):
+                            is_subscription = True
+                            break
+
+                    if not is_subscription:
+                        price_text = price_elem.get_text(strip=True)
+                        parsed_price = self._parse_price(price_text)
+                        if parsed_price and parsed_price > 0:
+                            product.price = parsed_price
+                            break
+
+        # Fallback: Try to get price from the whole + fraction format
+        if not product.price:
+            # Try specific container first, avoiding subscription areas
+            price_container = soup.select_one('#oneTimeBuyBox .a-price')
+            if not price_container:
+                price_container = soup.select_one('#corePriceDisplay_desktop_feature_div .a-price')
             if not price_container:
                 price_container = soup.select_one('.priceToPay')
-            if not price_container:
-                price_container = soup
 
-            whole = price_container.select_one('.a-price-whole')
-            fraction = price_container.select_one('.a-price-fraction')
-            if whole:
-                price_text = whole.get_text(strip=True).replace('.', '').replace(',', '')
-                if fraction:
-                    price_text += ',' + fraction.get_text(strip=True)
-                product.price = self._parse_price(price_text)
+            if price_container:
+                whole = price_container.select_one('.a-price-whole')
+                fraction = price_container.select_one('.a-price-fraction')
+                if whole:
+                    price_text = whole.get_text(strip=True).replace('.', '').replace(',', '')
+                    if fraction:
+                        price_text += ',' + fraction.get_text(strip=True)
+                    product.price = self._parse_price(price_text)
 
         # Extract original price (if on sale)
         original_selectors = [

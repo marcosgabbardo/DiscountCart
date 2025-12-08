@@ -145,49 +145,71 @@ class AmazonScraper:
             product.title = title_elem.get_text(strip=True)
 
         # Extract price - IMPORTANT: Get "one-time purchase" price, NOT subscription price
-        # Strategy: Find all prices in the buy box area and pick the HIGHEST one
-        # (subscription price is always lower than one-time purchase price)
+        # Amazon shows lower "Subscribe & Save" price which we want to avoid
 
-        all_prices = []
+        product.price = None
 
-        # Collect prices from various selectors
-        price_selectors = [
-            '.a-price .a-offscreen',
-            '.priceToPay .a-offscreen',
-            '#priceblock_ourprice',
-            '#priceblock_dealprice',
-            '#priceblock_saleprice',
-        ]
+        # Strategy 1: Look for "Comprar uma única vez" / "One-time purchase" text and get price near it
+        # This is the most reliable method for products with subscription option
+        page_text = str(soup)
 
-        # Look in the main buying area only (avoid related products, etc)
-        buy_box = soup.select_one('#desktop_buybox') or soup.select_one('#buybox') or soup.select_one('#centerCol') or soup
+        # Check if this product has Subscribe & Save option
+        has_subscription = any(text in page_text.lower() for text in [
+            'comprar com recorrência',
+            'subscribe & save',
+            'recorrência',
+            'inscreva-se',
+            'sns-accordion',
+        ])
 
-        for selector in price_selectors:
-            price_elems = buy_box.select(selector)
-            for price_elem in price_elems:
-                price_text = price_elem.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
+        if has_subscription:
+            # Find the one-time purchase section
+            # Look for accordion rows or specific divs containing one-time purchase
+            one_time_containers = [
+                soup.find('div', {'id': re.compile(r'newAccordionRow', re.I)}),
+                soup.find('div', {'id': re.compile(r'oneTimeBuy', re.I)}),
+                soup.find('span', string=re.compile(r'comprar uma única vez|one.time|uma vez', re.I)),
+            ]
+
+            for container in one_time_containers:
+                if container:
+                    # If we found a text element, get its parent container
+                    if container.name == 'span':
+                        container = container.find_parent('div')
+                    if container:
+                        # Look for price in this container
+                        price_elem = container.select_one('.a-price .a-offscreen')
+                        if price_elem:
+                            parsed_price = self._parse_price(price_elem.get_text(strip=True))
+                            if parsed_price and parsed_price > 0:
+                                product.price = parsed_price
+                                break
+
+        # Strategy 2: If no subscription or couldn't find one-time price,
+        # collect all prices and pick the highest (one-time >= subscription)
+        if not product.price:
+            all_prices = []
+
+            # Focus on the buy box area
+            buy_box = soup.select_one('#desktop_buybox') or soup.select_one('#buybox') or soup.select_one('#centerCol') or soup
+
+            # Get all price elements
+            for price_elem in buy_box.select('.a-price .a-offscreen'):
+                parsed_price = self._parse_price(price_elem.get_text(strip=True))
                 if parsed_price and parsed_price > 0:
                     all_prices.append(parsed_price)
 
-        # Also try whole + fraction format
-        price_containers = buy_box.select('.a-price')
-        for container in price_containers:
-            whole = container.select_one('.a-price-whole')
-            fraction = container.select_one('.a-price-fraction')
-            if whole:
-                price_text = whole.get_text(strip=True).replace('.', '').replace(',', '')
-                if fraction:
-                    price_text += ',' + fraction.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
-                if parsed_price and parsed_price > 0:
-                    all_prices.append(parsed_price)
+            # Also check legacy price blocks
+            for selector in ['#priceblock_ourprice', '#priceblock_dealprice', '#priceblock_saleprice']:
+                elem = soup.select_one(selector)
+                if elem:
+                    parsed_price = self._parse_price(elem.get_text(strip=True))
+                    if parsed_price and parsed_price > 0:
+                        all_prices.append(parsed_price)
 
-        # Pick the highest price (one-time purchase is always >= subscription price)
-        if all_prices:
-            # Remove duplicates and get the highest
-            unique_prices = list(set(all_prices))
-            product.price = max(unique_prices)
+            # Pick the highest price
+            if all_prices:
+                product.price = max(all_prices)
 
         # Extract original price (if on sale)
         original_selectors = [

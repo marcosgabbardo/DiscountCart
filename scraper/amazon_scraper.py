@@ -144,47 +144,45 @@ class AmazonScraper:
         if title_elem:
             product.title = title_elem.get_text(strip=True)
 
-        # Extract price - Get the HIGHEST price (one-time purchase price)
-        # Products with "Subscribe & Save" show a lower subscription price
-        # The one-time purchase price is always higher, so we pick max()
+        # Extract price - Get one-time purchase price (not subscription)
+        # Strategy: Get prices from BUY BOX only, then pick the highest of the two lowest
+        # (subscription and one-time are usually the two lowest prices in buy box)
 
         all_prices = []
 
-        # Collect all prices from the page
+        # IMPORTANT: Only look in the buy box area to avoid prices from related products
+        buy_box = soup.select_one('#desktop_buybox')
+        if not buy_box:
+            buy_box = soup.select_one('#buybox')
+        if not buy_box:
+            buy_box = soup.select_one('#centerCol')
+        if not buy_box:
+            buy_box = soup
+
+        # Specific selectors for the main price display
         price_selectors = [
-            '.a-price .a-offscreen',
+            '#corePrice_feature_div .a-price .a-offscreen',
+            '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen',
             '.priceToPay .a-offscreen',
             '#priceblock_ourprice',
             '#priceblock_dealprice',
             '#priceblock_saleprice',
-            '#corePrice_feature_div .a-offscreen',
-            '#corePriceDisplay_desktop_feature_div .a-offscreen',
         ]
 
         for selector in price_selectors:
-            for price_elem in soup.select(selector):
+            for price_elem in buy_box.select(selector):
                 price_text = price_elem.get_text(strip=True)
                 parsed_price = self._parse_price(price_text)
                 if parsed_price and parsed_price > 0:
                     all_prices.append(parsed_price)
 
-        # Also try whole + fraction format
-        for container in soup.select('.a-price'):
-            whole = container.select_one('.a-price-whole')
-            fraction = container.select_one('.a-price-fraction')
-            if whole:
-                whole_text = whole.get_text(strip=True).replace('.', '').replace(',', '')
-                if whole_text:
-                    price_text = whole_text
-                    if fraction:
-                        price_text += ',' + fraction.get_text(strip=True)
-                    parsed_price = self._parse_price(price_text)
-                    if parsed_price and parsed_price > 0:
-                        all_prices.append(parsed_price)
-
-        # Pick the HIGHEST price (one-time purchase >= subscription price)
+        # If we found prices, get the highest of the two smallest
+        # (this filters out crazy high prices from other parts of the page)
         if all_prices:
-            product.price = max(all_prices)
+            unique_prices = sorted(set(all_prices))
+            # Take up to 2 lowest prices and pick the max (one-time purchase)
+            reasonable_prices = unique_prices[:2]
+            product.price = max(reasonable_prices)
 
         # Extract original price (if on sale)
         original_selectors = [

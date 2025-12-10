@@ -8,6 +8,7 @@ import random
 import time
 import json
 import base64
+import uuid
 from decimal import Decimal
 from typing import Optional
 from dataclasses import dataclass
@@ -76,6 +77,36 @@ class CarrefourScraper:
         """Add random delay between requests to avoid detection."""
         delay = random.uniform(settings.SCRAPE_DELAY_MIN, settings.SCRAPE_DELAY_MAX)
         time.sleep(delay)
+
+    def _set_regionalization(self) -> bool:
+        """Call Carrefour API to set CEP/region for correct pricing."""
+        try:
+            self.session.headers['User-Agent'] = self._get_random_user_agent()
+
+            # Generate a random page-view-id
+            page_view_id = str(uuid.uuid4())
+
+            url = f"{self.BASE_URL}/action/set-regionalization.data"
+            data = {
+                'page-view-id': page_view_id,
+                'source': 'cep-component',
+                'CEP': self.cep
+            }
+
+            response = self.session.post(
+                url,
+                data=data,
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Origin': self.BASE_URL,
+                    'Referer': f"{self.BASE_URL}/",
+                }
+            )
+
+            return response.status_code == 200
+        except Exception:
+            return False
 
     def extract_sku(self, url: str) -> Optional[str]:
         """Extract SKU/product ID from Carrefour URL."""
@@ -358,6 +389,9 @@ class CarrefourScraper:
 
         try:
             self._random_delay()
+
+            # Set CEP/region before scraping for correct pricing
+            self._set_regionalization()
 
             # HTML scraping only - hierarchical search for price
             html = self._fetch_page(normalized_url)

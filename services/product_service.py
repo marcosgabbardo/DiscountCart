@@ -46,8 +46,16 @@ class ProductService:
         # Scrape product information
         scraped = scraper.scrape_product(url)
 
-        if scraped.error and not scraped.title:
-            raise ValueError(f"Failed to scrape product: {scraped.error}")
+        # If scraping failed with error, raise it
+        if scraped.error:
+            raise ValueError(f"Falha ao buscar produto: {scraped.error}")
+
+        # Must have title and price for a valid scrape
+        if not scraped.title:
+            raise ValueError("Não foi possível extrair o título do produto.")
+
+        if not scraped.price:
+            raise ValueError("Não foi possível extrair o preço do produto. O site pode estar bloqueando.")
 
         # Check if product already exists (use SKU + store as identifier)
         existing = self.get_product_by_sku(scraped.sku, store)
@@ -163,8 +171,12 @@ class ProductService:
         scraper = self._get_scraper(product.store)
         scraped = scraper.scrape_product(product.url)
 
+        # If scraping failed with error, raise it
         if scraped.error:
-            print(f"Warning: {scraped.error}")
+            raise ValueError(f"Falha ao atualizar produto: {scraped.error}")
+
+        if not scraped.price:
+            raise ValueError("Não foi possível extrair o preço do produto. O site pode estar bloqueando.")
 
         if scraped.price:
             # Update product prices

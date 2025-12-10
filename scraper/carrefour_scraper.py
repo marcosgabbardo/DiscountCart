@@ -261,36 +261,74 @@ class CarrefourScraper:
                     break
 
         # Try multiple methods to get price
-        # Method 1: CSS selectors (most reliable for current price)
-        price_selectors = [
-            # Carrefour specific - blue royal price (main price displayed)
-            'span.text-blue-royal.font-bold.text-xl',
-            'span[class*="text-blue-royal"][class*="font-bold"]',
-            'span[class*="blue-royal"]',
-            # Other Carrefour selectors
-            '[class*="sellingPrice"] [class*="currencyInteger"]',
-            '[class*="sellingPriceValue"]',
-            '[class*="ProductPrice"] [class*="Value"]',
-            '.vtex-product-price-1-x-sellingPriceValue',
-            '.skuBestPrice',
-            '.price-best-price',
-            '[data-testid="price"]',
-        ]
-
-        for selector in price_selectors:
-            price_elem = soup.select_one(selector)
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
-                if parsed_price and parsed_price > 0:
-                    product.price = parsed_price
+        # Method 1: Hierarchical search (most reliable for Carrefour)
+        # Path: flex flex-col order-2... > hidden md:block... > text-blue-royal...
+        try:
+            # Find the sticky sidebar container (has order-2 and lg:sticky)
+            sidebar = None
+            for div in soup.find_all('div'):
+                classes = div.get('class', [])
+                class_str = ' '.join(classes) if classes else ''
+                if 'order-2' in classes and 'flex-col' in classes and 'lg:sticky' in class_str:
+                    sidebar = div
                     break
 
-        # Method 2: JSON-LD structured data (fallback)
+            if sidebar:
+                # Find the price box inside (hidden md:block with border)
+                price_box = None
+                for div in sidebar.find_all('div'):
+                    classes = div.get('class', [])
+                    class_str = ' '.join(classes) if classes else ''
+                    if 'md:block' in class_str and 'border-gray-light' in class_str:
+                        price_box = div
+                        break
+
+                if price_box:
+                    # Find the price span (text-blue-royal font-bold text-lg)
+                    for span in price_box.find_all('span'):
+                        classes = span.get('class', [])
+                        class_str = ' '.join(classes) if classes else ''
+                        if 'text-blue-royal' in class_str and 'font-bold' in classes:
+                            price_text = span.get_text(strip=True)
+                            parsed_price = self._parse_price(price_text)
+                            if parsed_price and parsed_price > 0:
+                                product.price = parsed_price
+                                break
+        except Exception:
+            pass  # Continue to fallback methods
+
+        # Method 2: Direct CSS selectors (fallback)
+        if not product.price:
+            price_selectors = [
+                # Carrefour specific - blue royal price (main price displayed)
+                'span.text-blue-royal.font-bold.text-xl',
+                'span.text-blue-royal.font-bold.text-lg',
+                'span[class*="text-blue-royal"][class*="font-bold"]',
+                'span[class*="blue-royal"]',
+                # Other Carrefour selectors
+                '[class*="sellingPrice"] [class*="currencyInteger"]',
+                '[class*="sellingPriceValue"]',
+                '[class*="ProductPrice"] [class*="Value"]',
+                '.vtex-product-price-1-x-sellingPriceValue',
+                '.skuBestPrice',
+                '.price-best-price',
+                '[data-testid="price"]',
+            ]
+
+            for selector in price_selectors:
+                price_elem = soup.select_one(selector)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
+                    if parsed_price and parsed_price > 0:
+                        product.price = parsed_price
+                        break
+
+        # Method 3: JSON-LD structured data (fallback)
         if not product.price:
             product.price = self._extract_price_from_json_ld(soup)
 
-        # Method 3: JavaScript state (last resort)
+        # Method 4: JavaScript state (last resort)
         if not product.price:
             product.price = self._extract_price_from_state(html)
 

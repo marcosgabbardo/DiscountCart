@@ -261,38 +261,38 @@ class CarrefourScraper:
                     break
 
         # Try multiple methods to get price
-        # Method 1: JSON-LD structured data
-        product.price = self._extract_price_from_json_ld(soup)
+        # Method 1: CSS selectors (most reliable for current price)
+        price_selectors = [
+            # Carrefour specific - blue royal price (main price displayed)
+            'span.text-blue-royal.font-bold.text-xl',
+            'span[class*="text-blue-royal"][class*="font-bold"]',
+            'span[class*="blue-royal"]',
+            # Other Carrefour selectors
+            '[class*="sellingPrice"] [class*="currencyInteger"]',
+            '[class*="sellingPriceValue"]',
+            '[class*="ProductPrice"] [class*="Value"]',
+            '.vtex-product-price-1-x-sellingPriceValue',
+            '.skuBestPrice',
+            '.price-best-price',
+            '[data-testid="price"]',
+        ]
 
-        # Method 2: JavaScript state
+        for selector in price_selectors:
+            price_elem = soup.select_one(selector)
+            if price_elem:
+                price_text = price_elem.get_text(strip=True)
+                parsed_price = self._parse_price(price_text)
+                if parsed_price and parsed_price > 0:
+                    product.price = parsed_price
+                    break
+
+        # Method 2: JSON-LD structured data (fallback)
+        if not product.price:
+            product.price = self._extract_price_from_json_ld(soup)
+
+        # Method 3: JavaScript state (last resort)
         if not product.price:
             product.price = self._extract_price_from_state(html)
-
-        # Method 3: CSS selectors
-        if not product.price:
-            price_selectors = [
-                # Carrefour specific - blue royal price
-                'span.text-blue-royal.font-bold.text-xl',
-                'span[class*="text-blue-royal"][class*="font-bold"]',
-                'span[class*="blue-royal"]',
-                # Other Carrefour selectors
-                '[class*="sellingPrice"] [class*="currencyInteger"]',
-                '[class*="sellingPriceValue"]',
-                '[class*="ProductPrice"] [class*="Value"]',
-                '.vtex-product-price-1-x-sellingPriceValue',
-                '.skuBestPrice',
-                '.price-best-price',
-                '[data-testid="price"]',
-            ]
-
-            for selector in price_selectors:
-                price_elem = soup.select_one(selector)
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    parsed_price = self._parse_price(price_text)
-                    if parsed_price and parsed_price > 0:
-                        product.price = parsed_price
-                        break
 
         # Extract image
         image_selectors = [
@@ -336,28 +336,7 @@ class CarrefourScraper:
         try:
             self._random_delay()
 
-            # Try API first (more reliable)
-            api_data = self._fetch_price_from_api(sku)
-            if api_data:
-                title = api_data.get('productName') or api_data.get('name')
-                items = api_data.get('items', [])
-                price = None
-                if items:
-                    sellers = items[0].get('sellers', [])
-                    if sellers:
-                        offer = sellers[0].get('commertialOffer', {})
-                        price = offer.get('Price') or offer.get('spotPrice')
-
-                if title and price:
-                    return ScrapedProduct(
-                        sku=sku,
-                        url=normalized_url,
-                        title=title,
-                        price=Decimal(str(price)),
-                        is_available=True
-                    )
-
-            # Fallback to HTML scraping
+            # Try HTML scraping first (CSS selectors have most accurate current price)
             html = self._fetch_page(normalized_url)
 
             if html:
@@ -369,7 +348,34 @@ class CarrefourScraper:
                 if product.title and product.price:
                     product.error = None
                     return product
-                elif product.title and not product.price:
+
+            # Fallback to API if HTML scraping didn't get price
+            api_data = self._fetch_price_from_api(sku)
+            if api_data:
+                title = api_data.get('productName') or api_data.get('name')
+                items = api_data.get('items', [])
+                price = None
+                if items:
+                    sellers = items[0].get('sellers', [])
+                    if sellers:
+                        offer = sellers[0].get('commertialOffer', {})
+                        price = offer.get('Price') or offer.get('spotPrice')
+
+                if price:
+                    return ScrapedProduct(
+                        sku=sku,
+                        url=normalized_url,
+                        title=title or url_title,
+                        price=Decimal(str(price)),
+                        is_available=True
+                    )
+
+            # If we got title from HTML but no price
+            if html:
+                product = self._parse_product_page(html, normalized_url, sku)
+                if not product.title and url_title:
+                    product.title = url_title
+                if product.title and not product.price:
                     product.error = "Não foi possível extrair o preço. Site pode estar bloqueando."
                     return product
 

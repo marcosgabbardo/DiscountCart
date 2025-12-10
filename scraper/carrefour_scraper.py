@@ -7,6 +7,7 @@ import re
 import random
 import time
 import json
+import base64
 from decimal import Decimal
 from typing import Optional
 from dataclasses import dataclass
@@ -53,8 +54,13 @@ class CarrefourScraper:
             'Cache-Control': 'max-age=0',
         })
 
-        # Set CEP cookie for regional pricing
+        # Set CEP cookies for regional pricing
+        # cep_carrefour_ja: plain CEP
+        # cep: base64 encoded CEP with quotes (e.g., "90420-010" -> base64)
+        cep_with_quotes = f'"{self.cep}"'
+        cep_base64 = base64.b64encode(cep_with_quotes.encode()).decode()
         self.session.cookies.set('cep_carrefour_ja', self.cep, domain='mercado.carrefour.com.br')
+        self.session.cookies.set('cep', cep_base64, domain='mercado.carrefour.com.br')
 
     def _get_random_user_agent(self) -> str:
         """Get a random user agent from the configured list."""

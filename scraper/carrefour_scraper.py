@@ -271,6 +271,11 @@ class CarrefourScraper:
         # Method 3: CSS selectors
         if not product.price:
             price_selectors = [
+                # Carrefour specific - blue royal price
+                'span.text-blue-royal.font-bold.text-xl',
+                'span[class*="text-blue-royal"][class*="font-bold"]',
+                'span[class*="blue-royal"]',
+                # Other Carrefour selectors
                 '[class*="sellingPrice"] [class*="currencyInteger"]',
                 '[class*="sellingPriceValue"]',
                 '[class*="ProductPrice"] [class*="Value"]',

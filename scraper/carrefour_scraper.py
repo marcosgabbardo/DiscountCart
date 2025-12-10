@@ -87,15 +87,13 @@ class CarrefourScraper:
             page_view_id = str(uuid.uuid4())
 
             url = f"{self.BASE_URL}/action/set-regionalization.data"
-            data = {
-                'page-view-id': page_view_id,
-                'source': 'cep-component',
-                'CEP': self.cep
-            }
+
+            # Build request body exactly as browser sends it
+            body = f"page-view-id={page_view_id}&source=cep-component&CEP={self.cep}"
 
             response = self.session.post(
                 url,
-                data=data,
+                data=body,
                 timeout=settings.REQUEST_TIMEOUT,
                 headers={
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -104,8 +102,12 @@ class CarrefourScraper:
                 }
             )
 
+            print(f"[DEBUG] Regionalization API: status={response.status_code}, CEP={self.cep}")
+            print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
+
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] Regionalization API error: {e}")
             return False
 
     def extract_sku(self, url: str) -> Optional[str]:

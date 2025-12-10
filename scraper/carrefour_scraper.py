@@ -59,8 +59,14 @@ class CarrefourScraper:
         # cep: base64 encoded CEP with quotes (e.g., "90420-010" -> base64)
         cep_with_quotes = f'"{self.cep}"'
         cep_base64 = base64.b64encode(cep_with_quotes.encode()).decode()
-        self.session.cookies.set('cep_carrefour_ja', self.cep, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('cep', cep_base64, domain='mercado.carrefour.com.br')
+
+        # Try multiple domain variations
+        for domain in ['.carrefour.com.br', 'mercado.carrefour.com.br', '.mercado.carrefour.com.br']:
+            self.session.cookies.set('cep_carrefour_ja', self.cep, domain=domain)
+            self.session.cookies.set('cep', cep_base64, domain=domain)
+
+        # Also set via Cookie header directly
+        self.session.headers['Cookie'] = f'cep_carrefour_ja={self.cep}; cep={cep_base64}'
 
     def _get_random_user_agent(self) -> str:
         """Get a random user agent from the configured list."""

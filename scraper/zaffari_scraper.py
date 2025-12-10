@@ -75,6 +75,26 @@ class ZaffariScraper:
 
         return None
 
+    def extract_title_from_url(self, url: str) -> Optional[str]:
+        """Extract product title from URL slug."""
+        # URL format: https://www.zaffari.com.br/product-name-SKU/p
+        parsed = urlparse(url)
+        path = parsed.path.strip('/')
+
+        # Remove /p suffix if present
+        if path.endswith('/p'):
+            path = path[:-2]
+
+        # Remove the SKU (last number after hyphen)
+        slug = re.sub(r'-\d+$', '', path)
+
+        if slug:
+            # Convert slug to title: replace hyphens with spaces and capitalize
+            title = slug.replace('-', ' ').title()
+            return title
+
+        return None
+
     def validate_url(self, url: str) -> bool:
         """Check if URL is a valid Zaffari product URL."""
         parsed = urlparse(url)
@@ -256,11 +276,23 @@ class ZaffariScraper:
 
         normalized_url = self.normalize_url(url)
 
+        # Extract title from URL as fallback
+        url_title = self.extract_title_from_url(normalized_url)
+
         try:
             self._random_delay()
             html = self._fetch_page(normalized_url)
 
             if not html:
+                # Use URL-based info if scraping fails
+                if url_title:
+                    return ScrapedProduct(
+                        sku=sku,
+                        url=normalized_url,
+                        title=url_title,
+                        is_available=True,
+                        error="Preço não disponível via scraping. Título extraído da URL."
+                    )
                 return ScrapedProduct(
                     sku=sku,
                     url=normalized_url,
@@ -270,12 +302,28 @@ class ZaffariScraper:
 
             product = self._parse_product_page(html, normalized_url, sku)
 
-            if not product.title:
-                product.error = "Não foi possível extrair informações do produto. A estrutura da página pode ter mudado."
+            # If title wasn't found via scraping, use URL title
+            if not product.title and url_title:
+                product.title = url_title
+
+            # If we have a title (from URL or scraping), consider it a success
+            if product.title:
+                product.error = None
+            else:
+                product.error = "Não foi possível extrair informações do produto."
 
             return product
 
         except Exception as e:
+            # Even if scraping fails, we can use URL-based info
+            if url_title:
+                return ScrapedProduct(
+                    sku=sku,
+                    url=normalized_url,
+                    title=url_title,
+                    is_available=True,
+                    error=f"Scraping falhou ({str(e)}), título extraído da URL."
+                )
             return ScrapedProduct(
                 sku=sku,
                 url=normalized_url,

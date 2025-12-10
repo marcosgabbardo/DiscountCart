@@ -36,13 +36,15 @@ class CarrefourScraper:
     """Scraper for Carrefour supermarket product pages."""
 
     BASE_URL = 'https://mercado.carrefour.com.br'
+    DEFAULT_CEP = '90420-010'  # Default CEP for price region
 
-    def __init__(self):
+    def __init__(self, cep: str = None):
+        self.cep = cep or self.DEFAULT_CEP
         self.session = requests.Session()
         self._setup_session()
 
     def _setup_session(self) -> None:
-        """Configure session with appropriate headers."""
+        """Configure session with appropriate headers and CEP cookies."""
         self.session.headers.update({
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json',
             'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -51,6 +53,14 @@ class CarrefourScraper:
             'Upgrade-Insecure-Requests': '1',
             'Cache-Control': 'max-age=0',
         })
+
+        # Set CEP cookies for regional pricing
+        cep_clean = self.cep.replace('-', '')
+        self.session.cookies.set('userPostalCode', self.cep, domain='mercado.carrefour.com.br')
+        self.session.cookies.set('postalCode', self.cep, domain='mercado.carrefour.com.br')
+        self.session.cookies.set('cep', self.cep, domain='mercado.carrefour.com.br')
+        self.session.cookies.set('zipCode', cep_clean, domain='mercado.carrefour.com.br')
+        self.session.cookies.set('delivery_zip', cep_clean, domain='mercado.carrefour.com.br')
 
     def _get_random_user_agent(self) -> str:
         """Get a random user agent from the configured list."""

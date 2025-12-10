@@ -261,34 +261,53 @@ class CarrefourScraper:
                     break
 
         # Extract price using hierarchical search ONLY
-        # Path: flex flex-col gap-2 w-full sm:max-w-[320px] > span text-blue-royal font-bold text-xl
+        # Hierarchy: div.w-full.lg:w-2/5 > div.flex-col.gap-2... > span.text-blue-royal.text-xl
+        # Verify by checking for button "Ver mais formas de pagamento"
         try:
-            # Find the container (flex flex-col gap-2 w-full sm:max-w-[320px])
-            container = None
+            # Step 1: Find parent div with w-full and lg:w-2/5
+            parent_container = None
             for div in soup.find_all('div'):
                 classes = div.get('class', [])
                 class_str = ' '.join(classes) if classes else ''
-                if ('flex-col' in classes and 'gap-2' in classes and
-                    'w-full' in classes and 'sm:max-w-[320px]' in class_str):
-                    container = div
+                if 'w-full' in classes and 'lg:w-2/5' in class_str:
+                    parent_container = div
                     break
 
-            if container:
-                # Find the EXACT price span: text-blue-royal font-bold whitespace-nowrap text-xl
-                # Must skip spans with line-through (old/crossed price)
-                for span in container.find_all('span'):
-                    classes = span.get('class', [])
+            if parent_container:
+                # Step 2: Find inner container (flex-col gap-2 w-full sm:max-w-[320px])
+                inner_container = None
+                for div in parent_container.find_all('div'):
+                    classes = div.get('class', [])
                     class_str = ' '.join(classes) if classes else ''
-                    # Skip old price (has line-through)
-                    if 'line-through' in class_str:
-                        continue
-                    # Must have ALL these classes: text-blue-royal, text-xl
-                    if 'text-blue-royal' in class_str and 'text-xl' in class_str:
-                        price_text = span.get_text(strip=True)
-                        parsed_price = self._parse_price(price_text)
-                        if parsed_price and parsed_price > 0:
-                            product.price = parsed_price
+                    if ('flex-col' in classes and 'gap-2' in classes and
+                        'w-full' in classes and 'sm:max-w-[320px]' in class_str):
+                        inner_container = div
+                        break
+
+                if inner_container:
+                    # Step 3: Verify we're in the right place - check for payment button
+                    has_payment_button = False
+                    for button in inner_container.find_all('button'):
+                        button_text = button.get_text(strip=True).lower()
+                        if 'formas de pagamento' in button_text:
+                            has_payment_button = True
                             break
+
+                    if has_payment_button:
+                        # Step 4: Find the price span (text-blue-royal text-xl)
+                        for span in inner_container.find_all('span'):
+                            classes = span.get('class', [])
+                            class_str = ' '.join(classes) if classes else ''
+                            # Skip old price (has line-through)
+                            if 'line-through' in class_str:
+                                continue
+                            # Must have text-blue-royal AND text-xl
+                            if 'text-blue-royal' in class_str and 'text-xl' in class_str:
+                                price_text = span.get_text(strip=True)
+                                parsed_price = self._parse_price(price_text)
+                                if parsed_price and parsed_price > 0:
+                                    product.price = parsed_price
+                                    break
         except Exception:
             pass  # Price extraction failed
 

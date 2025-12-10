@@ -274,12 +274,16 @@ class CarrefourScraper:
                     break
 
             if container:
-                # Find the price span (text-blue-royal font-bold whitespace-nowrap text-xl)
+                # Find the EXACT price span: text-blue-royal font-bold whitespace-nowrap text-xl
+                # Must skip spans with line-through (old/crossed price)
                 for span in container.find_all('span'):
                     classes = span.get('class', [])
                     class_str = ' '.join(classes) if classes else ''
-                    if ('text-blue-royal' in class_str and 'font-bold' in classes and
-                        'text-xl' in classes):
+                    # Skip old price (has line-through)
+                    if 'line-through' in class_str:
+                        continue
+                    # Must have ALL these classes: text-blue-royal, text-xl
+                    if 'text-blue-royal' in class_str and 'text-xl' in class_str:
                         price_text = span.get_text(strip=True)
                         parsed_price = self._parse_price(price_text)
                         if parsed_price and parsed_price > 0:

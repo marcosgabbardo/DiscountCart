@@ -53,13 +53,8 @@ class CarrefourScraper:
             'Cache-Control': 'max-age=0',
         })
 
-        # Set CEP cookies for regional pricing
-        cep_clean = self.cep.replace('-', '')
-        self.session.cookies.set('userPostalCode', self.cep, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('postalCode', self.cep, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('cep', self.cep, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('zipCode', cep_clean, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('delivery_zip', cep_clean, domain='mercado.carrefour.com.br')
+        # Set CEP cookie for regional pricing
+        self.session.cookies.set('cep_carrefour_ja', self.cep, domain='mercado.carrefour.com.br')
 
     def _get_random_user_agent(self) -> str:
         """Get a random user agent from the configured list."""

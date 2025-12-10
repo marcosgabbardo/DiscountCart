@@ -2,6 +2,7 @@
 """
 Scheduler para atualização automática de preços.
 Executa às 8:00 da manhã e gera relatório Excel.
+Suporta Zaffari e Carrefour.
 """
 
 import schedule
@@ -14,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from services import ProductService, AlertService
-from database.models import AlertType
+from database.models import AlertType, Store
 
 
 def generate_excel_report(
@@ -44,7 +45,7 @@ def generate_excel_report(
 
     # Headers
     headers = [
-        "ID", "Produto", "Preço Anterior", "Preço Atual", "Variação",
+        "ID", "Loja", "Produto", "Preço Anterior", "Preço Atual", "Variação",
         "Preço Alvo", "Média 30d", "Desvio Padrão", "Alerta"
     ]
 
@@ -83,34 +84,39 @@ def generate_excel_report(
                 if not row_fill:
                     row_fill = std_fill
 
+        # Get store display name
+        store_name = product.store.display_name if hasattr(product.store, 'display_name') else str(product.store)
+
         # Preencher linha
         ws.cell(row=row, column=1, value=product.id).border = border
-        ws.cell(row=row, column=2, value=product.title[:50] if product.title else "").border = border
-        ws.cell(row=row, column=3, value=float(prev_price) if prev_price else None).border = border
-        ws.cell(row=row, column=4, value=float(product.current_price) if product.current_price else None).border = border
-        ws.cell(row=row, column=5, value=f"{variation:+.2f}%").border = border
-        ws.cell(row=row, column=6, value=float(product.target_price)).border = border
-        ws.cell(row=row, column=7, value=float(avg_price) if avg_price else None).border = border
-        ws.cell(row=row, column=8, value=float(std_dev) if std_dev else None).border = border
-        ws.cell(row=row, column=9, value=alert_type).border = border
+        ws.cell(row=row, column=2, value=store_name).border = border
+        ws.cell(row=row, column=3, value=product.title[:45] if product.title else "").border = border
+        ws.cell(row=row, column=4, value=float(prev_price) if prev_price else None).border = border
+        ws.cell(row=row, column=5, value=float(product.current_price) if product.current_price else None).border = border
+        ws.cell(row=row, column=6, value=f"{variation:+.2f}%").border = border
+        ws.cell(row=row, column=7, value=float(product.target_price)).border = border
+        ws.cell(row=row, column=8, value=float(avg_price) if avg_price else None).border = border
+        ws.cell(row=row, column=9, value=float(std_dev) if std_dev else None).border = border
+        ws.cell(row=row, column=10, value=alert_type).border = border
 
         # Aplicar cor se tem alerta
         if row_fill:
-            for col in range(1, 10):
+            for col in range(1, 11):
                 ws.cell(row=row, column=col).fill = row_fill
 
         row += 1
 
     # Ajustar largura das colunas
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 50
-    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 45
     ws.column_dimensions['D'].width = 15
-    ws.column_dimensions['E'].width = 12
-    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['E'].width = 15
+    ws.column_dimensions['F'].width = 12
     ws.column_dimensions['G'].width = 15
     ws.column_dimensions['H'].width = 15
-    ws.column_dimensions['I'].width = 30
+    ws.column_dimensions['I'].width = 15
+    ws.column_dimensions['J'].width = 30
 
     # Salvar arquivo
     filename = f"relatorio_precos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -177,13 +183,15 @@ def run_daily_update():
     if products_at_target:
         print(f"\n🎯 {len(products_at_target)} produto(s) no preço alvo!")
         for p in products_at_target:
-            print(f"   • {p.title[:40]}: R$ {p.current_price}")
+            store_name = p.store.display_name if hasattr(p.store, 'display_name') else str(p.store)
+            print(f"   • [{store_name}] {p.title[:35]}: R$ {p.current_price}")
 
     if products_below_std:
         print(f"\n📉 {len(products_below_std)} produto(s) abaixo do desvio padrão!")
         for item in products_below_std:
             p = item['product']
-            print(f"   • {p.title[:40]}: R$ {p.current_price} (limite: R$ {item['threshold']})")
+            store_name = p.store.display_name if hasattr(p.store, 'display_name') else str(p.store)
+            print(f"   • [{store_name}] {p.title[:35]}: R$ {p.current_price} (limite: R$ {item['threshold']})")
 
     print(f"\n{'='*60}")
     print(f"✅ Atualização concluída: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

@@ -1,4 +1,4 @@
--- Amazon Price Monitor Database Schema
+-- DiscountCart Price Monitor Database Schema
 -- Execute this script to create the database and tables
 
 CREATE DATABASE IF NOT EXISTS amazon_price_monitor
@@ -11,10 +11,11 @@ USE amazon_price_monitor;
 -- Stores the monitored products and their target prices
 CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    asin VARCHAR(20) NOT NULL UNIQUE,
+    asin VARCHAR(20) NOT NULL,
     url VARCHAR(500) NOT NULL,
     title VARCHAR(500),
     image_url VARCHAR(500),
+    store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari',
     target_price DECIMAL(10, 2) NOT NULL,
     current_price DECIMAL(10, 2),
     lowest_price DECIMAL(10, 2),
@@ -22,8 +23,10 @@ CREATE TABLE IF NOT EXISTS products (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY idx_store_asin (store, asin),
     INDEX idx_asin (asin),
-    INDEX idx_is_active (is_active)
+    INDEX idx_is_active (is_active),
+    INDEX idx_store (store)
 );
 
 -- Table: price_history
@@ -64,6 +67,7 @@ SELECT
     p.id,
     p.asin,
     p.title,
+    p.store,
     p.current_price,
     p.target_price,
     p.lowest_price,

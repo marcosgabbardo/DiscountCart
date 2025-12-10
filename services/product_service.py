@@ -6,8 +6,8 @@ import math
 from decimal import Decimal
 from typing import Optional, List, Tuple
 
-from database import get_db, Product, PriceHistory, ProductSummary
-from scraper import ZaffariScraper
+from database import get_db, Product, PriceHistory, ProductSummary, Store
+from scraper import ZaffariScraper, CarrefourScraper
 
 
 class ProductService:
@@ -15,27 +15,42 @@ class ProductService:
 
     def __init__(self):
         self.db = get_db()
-        self.scraper = ZaffariScraper()
+        self.zaffari_scraper = ZaffariScraper()
+        self.carrefour_scraper = CarrefourScraper()
+
+    def _get_scraper(self, store: Store):
+        """Get the appropriate scraper for the store."""
+        if store == Store.CARREFOUR:
+            return self.carrefour_scraper
+        return self.zaffari_scraper
+
+    def _detect_store(self, url: str) -> Store:
+        """Detect which store the URL belongs to."""
+        return Store.from_url(url)
 
     def add_product(self, url: str, target_price: Decimal) -> Product:
         """
         Add a new product to monitor.
 
         Args:
-            url: Zaffari product URL
+            url: Product URL (Zaffari or Carrefour)
             target_price: Target price for alerts
 
         Returns:
             Created Product object
         """
+        # Detect store from URL
+        store = self._detect_store(url)
+        scraper = self._get_scraper(store)
+
         # Scrape product information
-        scraped = self.scraper.scrape_product(url)
+        scraped = scraper.scrape_product(url)
 
         if scraped.error and not scraped.title:
             raise ValueError(f"Failed to scrape product: {scraped.error}")
 
-        # Check if product already exists (use SKU as identifier)
-        existing = self.get_product_by_sku(scraped.sku)
+        # Check if product already exists (use SKU + store as identifier)
+        existing = self.get_product_by_sku(scraped.sku, store)
         if existing:
             # Update target price, current price and reactivate
             self._update_product_target(existing.id, target_price)
@@ -45,14 +60,15 @@ class ProductService:
 
         # Insert new product
         query = """
-            INSERT INTO products (asin, url, title, image_url, target_price, current_price, lowest_price, highest_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO products (asin, url, title, image_url, store, target_price, current_price, lowest_price, highest_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             scraped.sku,  # Using SKU in asin column
             scraped.url,
             scraped.title,
             scraped.image_url,
+            store.value,
             float(target_price),
             float(scraped.price) if scraped.price else None,
             float(scraped.price) if scraped.price else None,
@@ -96,22 +112,35 @@ class ProductService:
             return Product.from_dict(results[0])
         return None
 
-    def get_product_by_sku(self, sku: str) -> Optional[Product]:
-        """Get product by SKU."""
-        query = "SELECT * FROM products WHERE asin = %s"
-        results = self.db.execute_query(query, (sku,))
+    def get_product_by_sku(self, sku: str, store: Optional[Store] = None) -> Optional[Product]:
+        """Get product by SKU and optionally by store."""
+        if store:
+            query = "SELECT * FROM products WHERE asin = %s AND store = %s"
+            results = self.db.execute_query(query, (sku, store.value))
+        else:
+            query = "SELECT * FROM products WHERE asin = %s"
+            results = self.db.execute_query(query, (sku,))
         if results:
             return Product.from_dict(results[0])
         return None
 
-    def get_all_products(self, active_only: bool = True) -> List[Product]:
-        """Get all monitored products."""
-        query = "SELECT * FROM products"
-        if active_only:
-            query += " WHERE is_active = TRUE"
-        query += " ORDER BY updated_at DESC"
+    def get_all_products(self, active_only: bool = True, store: Optional[Store] = None) -> List[Product]:
+        """Get all monitored products, optionally filtered by store."""
+        conditions = []
+        params = []
 
-        results = self.db.execute_query(query)
+        if active_only:
+            conditions.append("is_active = TRUE")
+        if store:
+            conditions.append("store = %s")
+            params.append(store.value)
+
+        query = "SELECT * FROM products"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY store, updated_at DESC"
+
+        results = self.db.execute_query(query, tuple(params) if params else None)
         return [Product.from_dict(row) for row in results]
 
     def get_product_summary(self) -> List[ProductSummary]:
@@ -131,7 +160,8 @@ class ProductService:
         if not product:
             return None
 
-        scraped = self.scraper.scrape_product(product.url)
+        scraper = self._get_scraper(product.store)
+        scraped = scraper.scrape_product(product.url)
 
         if scraped.error:
             print(f"Warning: {scraped.error}")

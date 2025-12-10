@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-Zaffari Price Monitor CLI
+DiscountCart Price Monitor CLI
 
-A command-line tool to monitor Zaffari product prices and get alerts
-when prices drop to your target.
+A command-line tool to monitor product prices from Zaffari and Carrefour
+and get alerts when prices drop to your target.
 
 Usage:
     python price_monitor.py add <url> <target_price>
-    python price_monitor.py list
+    python price_monitor.py list [--store zaffari|carrefour]
     python price_monitor.py check
     python price_monitor.py update
     python price_monitor.py alerts
     python price_monitor.py history <product_id>
     python price_monitor.py remove <product_id>
     python price_monitor.py init-db
+    python price_monitor.py migrate
 """
 
 import sys
@@ -23,10 +24,10 @@ from decimal import Decimal
 from tabulate import tabulate
 
 from config import settings
-from database import get_db
+from database import get_db, Store
 from database.models import AlertType
 from services import ProductService, AlertService
-from utils import parse_price, format_currency, truncate_string, validate_zaffari_url
+from utils import parse_price, format_currency, truncate_string, validate_product_url
 
 
 def init_database():
@@ -40,9 +41,12 @@ def init_database():
 def add_product(url: str, target_price_str: str):
     """Add a new product to monitor."""
     # Validate URL
-    if not validate_zaffari_url(url):
-        print(f"Erro: '{url}' não parece ser uma URL válida do Zaffari.")
-        print("Use uma URL no formato: https://www.zaffari.com.br/produto-123/p")
+    is_valid, store_name = validate_product_url(url)
+    if not is_valid:
+        print(f"Erro: '{url}' não parece ser uma URL válida.")
+        print("URLs suportadas:")
+        print("  - Zaffari: https://www.zaffari.com.br/produto-123/p")
+        print("  - Carrefour: https://mercado.carrefour.com.br/produto-123/p")
         sys.exit(1)
 
     # Parse target price
@@ -55,8 +59,9 @@ def add_product(url: str, target_price_str: str):
         print("     python price_monitor.py add \"URL\" '80,99'")
         sys.exit(1)
 
+    store_display = Store(store_name).display_name
     print(f"Adicionando produto com preço alvo {format_currency(target_price)}...")
-    print("Buscando informações do produto no Zaffari...")
+    print(f"Buscando informações do produto no {store_display}...")
 
     try:
         service = ProductService()
@@ -65,6 +70,7 @@ def add_product(url: str, target_price_str: str):
         print("\n✅ Produto adicionado com sucesso!")
         print("-" * 50)
         print(f"ID: {product.id}")
+        print(f"Loja: {product.store.display_name}")
         print(f"Título: {product.title}")
         print(f"SKU: {product.asin}")
         print(f"Preço Atual: {format_currency(product.current_price)}")
@@ -88,14 +94,28 @@ def add_product(url: str, target_price_str: str):
         sys.exit(1)
 
 
-def list_products():
+def list_products(store_filter: str = None):
     """List all monitored products."""
     try:
         service = ProductService()
-        products = service.get_all_products()
+
+        # Parse store filter
+        store = None
+        if store_filter:
+            try:
+                store = Store(store_filter.lower())
+            except ValueError:
+                print(f"Erro: Loja '{store_filter}' não reconhecida.")
+                print("Lojas disponíveis: zaffari, carrefour")
+                sys.exit(1)
+
+        products = service.get_all_products(store=store)
 
         if not products:
-            print("Nenhum produto sendo monitorado.")
+            if store:
+                print(f"Nenhum produto do {store.display_name} sendo monitorado.")
+            else:
+                print("Nenhum produto sendo monitorado.")
             print("Adicione um produto com: python price_monitor.py add <url> <preco_alvo>")
             return
 
@@ -112,20 +132,28 @@ def list_products():
                 else:
                     diff = f"⬇️ {format_currency(price_diff)}"
 
+            # Store emoji/abbreviation
+            store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+
             table_data.append([
                 p.id,
-                truncate_string(p.title, 40),
+                store_abbr,
+                truncate_string(p.title, 35),
                 format_currency(p.current_price),
                 format_currency(p.target_price),
                 diff,
                 status,
             ])
 
-        headers = ["ID", "Produto", "Atual", "Alvo", "Diferença", "Status"]
-        print(f"\n📦 Produtos Monitorados ({len(products)})")
-        print("-" * 80)
+        headers = ["ID", "Loja", "Produto", "Atual", "Alvo", "Diferença", "Status"]
+        title = f"📦 Produtos Monitorados ({len(products)})"
+        if store:
+            title += f" - {store.display_name}"
+        print(f"\n{title}")
+        print("Legenda: 🟢 Zaffari | 🔵 Carrefour")
+        print("-" * 90)
         print(tabulate(table_data, headers=headers, tablefmt="simple"))
-        print("-" * 80)
+        print("-" * 90)
 
     except Exception as e:
         print(f"Erro ao listar produtos: {e}")
@@ -346,6 +374,7 @@ def show_product_detail(product_id: int):
         print(f"📦 {product.title}")
         print("=" * 60)
         print(f"ID:           {product.id}")
+        print(f"Loja:         {product.store.display_name}")
         print(f"SKU:          {product.asin}")
         print(f"URL:          {product.url}")
         print(f"\n💰 Preços:")
@@ -373,15 +402,72 @@ def show_product_detail(product_id: int):
         sys.exit(1)
 
 
+def run_migration():
+    """Run database migration to add store column."""
+    print("Executando migração do banco de dados...")
+    db = get_db()
+
+    migration_queries = [
+        # Add the store column if it doesn't exist
+        """
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari'
+        AFTER image_url
+        """,
+        # Update the view
+        """
+        CREATE OR REPLACE VIEW product_summary AS
+        SELECT
+            p.id,
+            p.asin,
+            p.title,
+            p.store,
+            p.current_price,
+            p.target_price,
+            p.lowest_price,
+            p.highest_price,
+            ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)), 2) AS avg_price_7days,
+            ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)), 2) AS avg_price_30days,
+            (SELECT COUNT(*) FROM price_history ph WHERE ph.product_id = p.id) AS total_price_records,
+            CASE
+                WHEN p.current_price <= p.target_price THEN 'TARGET_REACHED'
+                WHEN p.current_price < p.lowest_price THEN 'NEW_LOW'
+                ELSE 'MONITORING'
+            END AS status,
+            p.is_active,
+            p.updated_at
+        FROM products p
+        WHERE p.is_active = TRUE
+        """
+    ]
+
+    try:
+        for query in migration_queries:
+            db.execute_query(query.strip(), fetch=False)
+        print("✅ Migração executada com sucesso!")
+        print("Agora você pode adicionar produtos do Carrefour também.")
+    except Exception as e:
+        if "Duplicate column name" in str(e):
+            print("✅ Banco de dados já está atualizado!")
+        else:
+            print(f"❌ Erro na migração: {e}")
+            print("\nSe o erro persistir, execute manualmente:")
+            print("  mysql -u USER -p DATABASE < migrations/001_add_store_column.sql")
+            sys.exit(1)
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Zaffari Price Monitor - Monitore preços e receba alertas",
+        description="DiscountCart Price Monitor - Monitore preços do Zaffari e Carrefour",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos:
   %(prog)s add "https://www.zaffari.com.br/produto-123/p" "R$80,99"
+  %(prog)s add "https://mercado.carrefour.com.br/produto-456/p" "R$50,00"
   %(prog)s list
+  %(prog)s list --store zaffari
+  %(prog)s list --store carrefour
   %(prog)s check
   %(prog)s update
   %(prog)s alerts
@@ -389,6 +475,7 @@ Exemplos:
   %(prog)s detail 1
   %(prog)s remove 1
   %(prog)s init-db
+  %(prog)s migrate
         """
     )
 
@@ -397,13 +484,18 @@ Exemplos:
     # init-db command
     subparsers.add_parser('init-db', help='Inicializar banco de dados')
 
+    # migrate command
+    subparsers.add_parser('migrate', help='Executar migração para suportar múltiplas lojas')
+
     # add command
     add_parser = subparsers.add_parser('add', help='Adicionar produto para monitorar')
-    add_parser.add_argument('url', help='URL do produto no Zaffari')
+    add_parser.add_argument('url', help='URL do produto (Zaffari ou Carrefour)')
     add_parser.add_argument('target_price', help='Preço alvo (ex: R$80,99 ou 80.99)')
 
     # list command
-    subparsers.add_parser('list', help='Listar todos os produtos monitorados')
+    list_parser = subparsers.add_parser('list', help='Listar todos os produtos monitorados')
+    list_parser.add_argument('--store', '-s', choices=['zaffari', 'carrefour'],
+                            help='Filtrar por loja')
 
     # check command
     subparsers.add_parser('check', help='Verificar preços e alertas')
@@ -436,10 +528,12 @@ Exemplos:
     # Execute command
     if args.command == 'init-db':
         init_database()
+    elif args.command == 'migrate':
+        run_migration()
     elif args.command == 'add':
         add_product(args.url, args.target_price)
     elif args.command == 'list':
-        list_products()
+        list_products(args.store)
     elif args.command == 'check':
         check_prices()
     elif args.command == 'update':

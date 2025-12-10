@@ -1,19 +1,13 @@
 -- Migration: Add store column to products table
 -- Run this if you already have an existing database
+-- Compatible with MySQL 5.7+ and MariaDB 10.3+
 
--- Add the store column
+-- Add the store column (will fail if already exists - that's OK)
 ALTER TABLE products
 ADD COLUMN store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari'
 AFTER image_url;
 
--- Drop the old unique index on asin (if exists)
--- Note: This may fail if the index doesn't exist, which is fine
-ALTER TABLE products DROP INDEX asin;
-
--- Add new composite unique index (store + asin)
-ALTER TABLE products ADD UNIQUE KEY idx_store_asin (store, asin);
-
--- Add index on store for filtering
+-- Add index on store for filtering (ignore error if exists)
 ALTER TABLE products ADD INDEX idx_store (store);
 
 -- Update the view to include store

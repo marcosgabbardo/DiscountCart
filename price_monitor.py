@@ -407,53 +407,66 @@ def run_migration():
     print("Executando migração do banco de dados...")
     db = get_db()
 
-    migration_queries = [
-        # Add the store column if it doesn't exist
-        """
-        ALTER TABLE products
-        ADD COLUMN IF NOT EXISTS store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari'
-        AFTER image_url
-        """,
-        # Update the view
-        """
-        CREATE OR REPLACE VIEW product_summary AS
-        SELECT
-            p.id,
-            p.asin,
-            p.title,
-            p.store,
-            p.current_price,
-            p.target_price,
-            p.lowest_price,
-            p.highest_price,
-            ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)), 2) AS avg_price_7days,
-            ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)), 2) AS avg_price_30days,
-            (SELECT COUNT(*) FROM price_history ph WHERE ph.product_id = p.id) AS total_price_records,
-            CASE
-                WHEN p.current_price <= p.target_price THEN 'TARGET_REACHED'
-                WHEN p.current_price < p.lowest_price THEN 'NEW_LOW'
-                ELSE 'MONITORING'
-            END AS status,
-            p.is_active,
-            p.updated_at
-        FROM products p
-        WHERE p.is_active = TRUE
-        """
-    ]
+    # First, check if store column already exists
+    check_column_query = """
+        SELECT COUNT(*) as cnt FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+        AND table_name = 'products'
+        AND column_name = 'store'
+    """
 
     try:
-        for query in migration_queries:
-            db.execute_query(query.strip(), fetch=False)
-        print("✅ Migração executada com sucesso!")
-        print("Agora você pode adicionar produtos do Carrefour também.")
-    except Exception as e:
-        if "Duplicate column name" in str(e):
-            print("✅ Banco de dados já está atualizado!")
+        result = db.execute_query(check_column_query)
+        column_exists = result[0]['cnt'] > 0 if result else False
+
+        if not column_exists:
+            print("Adicionando coluna 'store' à tabela products...")
+            add_column_query = """
+                ALTER TABLE products
+                ADD COLUMN store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari'
+                AFTER image_url
+            """
+            db.execute_query(add_column_query, fetch=False)
+            print("✅ Coluna 'store' adicionada!")
         else:
-            print(f"❌ Erro na migração: {e}")
-            print("\nSe o erro persistir, execute manualmente:")
-            print("  mysql -u USER -p DATABASE < migrations/001_add_store_column.sql")
-            sys.exit(1)
+            print("✅ Coluna 'store' já existe.")
+
+        # Update the view
+        print("Atualizando view product_summary...")
+        view_query = """
+            CREATE OR REPLACE VIEW product_summary AS
+            SELECT
+                p.id,
+                p.asin,
+                p.title,
+                p.store,
+                p.current_price,
+                p.target_price,
+                p.lowest_price,
+                p.highest_price,
+                ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)), 2) AS avg_price_7days,
+                ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)), 2) AS avg_price_30days,
+                (SELECT COUNT(*) FROM price_history ph WHERE ph.product_id = p.id) AS total_price_records,
+                CASE
+                    WHEN p.current_price <= p.target_price THEN 'TARGET_REACHED'
+                    WHEN p.current_price < p.lowest_price THEN 'NEW_LOW'
+                    ELSE 'MONITORING'
+                END AS status,
+                p.is_active,
+                p.updated_at
+            FROM products p
+            WHERE p.is_active = TRUE
+        """
+        db.execute_query(view_query, fetch=False)
+
+        print("\n✅ Migração executada com sucesso!")
+        print("Agora você pode adicionar produtos do Carrefour também.")
+
+    except Exception as e:
+        print(f"❌ Erro na migração: {e}")
+        print("\nSe o erro persistir, execute manualmente:")
+        print("  mysql -u USER -p DATABASE < migrations/001_add_store_column.sql")
+        sys.exit(1)
 
 
 def main():

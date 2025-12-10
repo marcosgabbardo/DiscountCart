@@ -8,6 +8,7 @@ import random
 import time
 import json
 import base64
+import uuid
 from decimal import Decimal
 from typing import Optional
 from dataclasses import dataclass
@@ -59,8 +60,14 @@ class CarrefourScraper:
         # cep: base64 encoded CEP with quotes (e.g., "90420-010" -> base64)
         cep_with_quotes = f'"{self.cep}"'
         cep_base64 = base64.b64encode(cep_with_quotes.encode()).decode()
-        self.session.cookies.set('cep_carrefour_ja', self.cep, domain='mercado.carrefour.com.br')
-        self.session.cookies.set('cep', cep_base64, domain='mercado.carrefour.com.br')
+
+        # Try multiple domain variations
+        for domain in ['.carrefour.com.br', 'mercado.carrefour.com.br', '.mercado.carrefour.com.br']:
+            self.session.cookies.set('cep_carrefour_ja', self.cep, domain=domain)
+            self.session.cookies.set('cep', cep_base64, domain=domain)
+
+        # Also set via Cookie header directly
+        self.session.headers['Cookie'] = f'cep_carrefour_ja={self.cep}; cep={cep_base64}'
 
     def _get_random_user_agent(self) -> str:
         """Get a random user agent from the configured list."""
@@ -70,6 +77,36 @@ class CarrefourScraper:
         """Add random delay between requests to avoid detection."""
         delay = random.uniform(settings.SCRAPE_DELAY_MIN, settings.SCRAPE_DELAY_MAX)
         time.sleep(delay)
+
+    def _set_regionalization(self) -> bool:
+        """Call Carrefour API to set CEP/region for correct pricing."""
+        try:
+            self.session.headers['User-Agent'] = self._get_random_user_agent()
+
+            # Generate a random page-view-id
+            page_view_id = str(uuid.uuid4())
+
+            url = f"{self.BASE_URL}/action/set-regionalization.data"
+            data = {
+                'page-view-id': page_view_id,
+                'source': 'cep-component',
+                'CEP': self.cep
+            }
+
+            response = self.session.post(
+                url,
+                data=data,
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Origin': self.BASE_URL,
+                    'Referer': f"{self.BASE_URL}/",
+                }
+            )
+
+            return response.status_code == 200
+        except Exception:
+            return False
 
     def extract_sku(self, url: str) -> Optional[str]:
         """Extract SKU/product ID from Carrefour URL."""
@@ -352,6 +389,9 @@ class CarrefourScraper:
 
         try:
             self._random_delay()
+
+            # Set CEP/region before scraping for correct pricing
+            self._set_regionalization()
 
             # HTML scraping only - hierarchical search for price
             html = self._fetch_page(normalized_url)

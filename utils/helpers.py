@@ -1,10 +1,10 @@
 """
-Helper utilities for Zaffari Price Monitor.
+Helper utilities for DiscountCart Price Monitor.
 """
 
 import re
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -116,17 +116,52 @@ def validate_zaffari_url(url: str) -> bool:
     )
 
 
-def extract_sku_from_url(url: str) -> Optional[str]:
+def validate_carrefour_url(url: str) -> bool:
     """
-    Extract SKU from Zaffari URL.
+    Validate if URL is a valid Carrefour product URL.
 
     Args:
-        url: Zaffari product URL
+        url: URL to validate
+
+    Returns:
+        True if valid Carrefour URL
+    """
+    parsed = urlparse(url)
+    return (
+        parsed.netloc in ['mercado.carrefour.com.br', 'www.mercado.carrefour.com.br'] and
+        '/p' in parsed.path
+    )
+
+
+def validate_product_url(url: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate if URL is a valid product URL from any supported store.
+
+    Args:
+        url: URL to validate
+
+    Returns:
+        Tuple of (is_valid, store_name) or (False, None)
+    """
+    if validate_zaffari_url(url):
+        return (True, 'zaffari')
+    if validate_carrefour_url(url):
+        return (True, 'carrefour')
+    return (False, None)
+
+
+def extract_sku_from_url(url: str) -> Optional[str]:
+    """
+    Extract SKU from product URL (Zaffari or Carrefour).
+
+    Args:
+        url: Product URL
 
     Returns:
         SKU string or None
     """
     # URL format: https://www.zaffari.com.br/product-name-SKU/p
+    # or: https://mercado.carrefour.com.br/product-name-SKU/p
     match = re.search(r'-(\d+)/p', url)
     if match:
         return match.group(1)
@@ -136,3 +171,20 @@ def extract_sku_from_url(url: str) -> Optional[str]:
         return match.group(1)
 
     return None
+
+
+def get_store_display_name(store: str) -> str:
+    """
+    Get display name for a store.
+
+    Args:
+        store: Store identifier (zaffari, carrefour)
+
+    Returns:
+        Display name
+    """
+    names = {
+        'zaffari': 'Zaffari',
+        'carrefour': 'Carrefour',
+    }
+    return names.get(store.lower(), store.title())

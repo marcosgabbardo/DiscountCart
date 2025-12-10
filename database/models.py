@@ -1,5 +1,5 @@
 """
-Database models and data classes for Amazon Price Monitor.
+Database models and data classes for DiscountCart Price Monitor.
 """
 
 from dataclasses import dataclass
@@ -7,6 +7,31 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 from enum import Enum
+
+
+class Store(Enum):
+    """Supported stores for price monitoring."""
+    ZAFFARI = 'zaffari'
+    CARREFOUR = 'carrefour'
+
+    @classmethod
+    def from_url(cls, url: str) -> 'Store':
+        """Detect store from URL."""
+        url_lower = url.lower()
+        if 'carrefour' in url_lower:
+            return cls.CARREFOUR
+        elif 'zaffari' in url_lower:
+            return cls.ZAFFARI
+        raise ValueError(f"URL não reconhecida: {url}")
+
+    @property
+    def display_name(self) -> str:
+        """Get display name for the store."""
+        names = {
+            'zaffari': 'Zaffari',
+            'carrefour': 'Carrefour',
+        }
+        return names.get(self.value, self.value.title())
 
 
 class AlertType(Enum):
@@ -25,6 +50,7 @@ class Product:
     url: str = ''
     title: Optional[str] = None
     image_url: Optional[str] = None
+    store: Store = Store.ZAFFARI
     target_price: Decimal = Decimal('0.00')
     current_price: Optional[Decimal] = None
     lowest_price: Optional[Decimal] = None
@@ -36,12 +62,16 @@ class Product:
     @classmethod
     def from_dict(cls, data: dict) -> 'Product':
         """Create Product from dictionary."""
+        store = data.get('store', 'zaffari')
+        if isinstance(store, str):
+            store = Store(store)
         return cls(
             id=data.get('id'),
             asin=data.get('asin', ''),
             url=data.get('url', ''),
             title=data.get('title'),
             image_url=data.get('image_url'),
+            store=store,
             target_price=Decimal(str(data.get('target_price', 0))),
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,
@@ -59,6 +89,7 @@ class Product:
             'url': self.url,
             'title': self.title,
             'image_url': self.image_url,
+            'store': self.store.value if isinstance(self.store, Store) else self.store,
             'target_price': float(self.target_price),
             'current_price': float(self.current_price) if self.current_price else None,
             'lowest_price': float(self.lowest_price) if self.lowest_price else None,
@@ -151,6 +182,7 @@ class ProductSummary:
     id: int
     asin: str
     title: Optional[str]
+    store: Store
     current_price: Optional[Decimal]
     target_price: Decimal
     lowest_price: Optional[Decimal]
@@ -165,10 +197,14 @@ class ProductSummary:
     @classmethod
     def from_dict(cls, data: dict) -> 'ProductSummary':
         """Create ProductSummary from dictionary."""
+        store = data.get('store', 'zaffari')
+        if isinstance(store, str):
+            store = Store(store)
         return cls(
             id=data.get('id', 0),
             asin=data.get('asin', ''),
             title=data.get('title'),
+            store=store,
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
             target_price=Decimal(str(data.get('target_price', 0))),
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,

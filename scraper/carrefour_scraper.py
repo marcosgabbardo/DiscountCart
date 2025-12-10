@@ -261,38 +261,30 @@ class CarrefourScraper:
                     break
 
         # Extract price using hierarchical search ONLY
-        # Path: flex flex-col order-2... > hidden md:block... > text-blue-royal...
+        # Path: flex flex-col gap-2 w-full sm:max-w-[320px] > span text-blue-royal font-bold text-xl
         try:
-            # Find the sticky sidebar container (has order-2 and lg:sticky)
-            sidebar = None
+            # Find the container (flex flex-col gap-2 w-full sm:max-w-[320px])
+            container = None
             for div in soup.find_all('div'):
                 classes = div.get('class', [])
                 class_str = ' '.join(classes) if classes else ''
-                if 'order-2' in classes and 'flex-col' in classes and 'lg:sticky' in class_str:
-                    sidebar = div
+                if ('flex-col' in classes and 'gap-2' in classes and
+                    'w-full' in classes and 'sm:max-w-[320px]' in class_str):
+                    container = div
                     break
 
-            if sidebar:
-                # Find the price box inside (hidden md:block with border)
-                price_box = None
-                for div in sidebar.find_all('div'):
-                    classes = div.get('class', [])
+            if container:
+                # Find the price span (text-blue-royal font-bold whitespace-nowrap text-xl)
+                for span in container.find_all('span'):
+                    classes = span.get('class', [])
                     class_str = ' '.join(classes) if classes else ''
-                    if 'md:block' in class_str and 'border-gray-light' in class_str:
-                        price_box = div
-                        break
-
-                if price_box:
-                    # Find the price span (text-blue-royal font-bold text-lg)
-                    for span in price_box.find_all('span'):
-                        classes = span.get('class', [])
-                        class_str = ' '.join(classes) if classes else ''
-                        if 'text-blue-royal' in class_str and 'font-bold' in classes:
-                            price_text = span.get_text(strip=True)
-                            parsed_price = self._parse_price(price_text)
-                            if parsed_price and parsed_price > 0:
-                                product.price = parsed_price
-                                break
+                    if ('text-blue-royal' in class_str and 'font-bold' in classes and
+                        'text-xl' in classes):
+                        price_text = span.get_text(strip=True)
+                        parsed_price = self._parse_price(price_text)
+                        if parsed_price and parsed_price > 0:
+                            product.price = parsed_price
+                            break
         except Exception:
             pass  # Price extraction failed
 

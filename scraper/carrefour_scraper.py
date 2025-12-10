@@ -260,54 +260,44 @@ class CarrefourScraper:
                     product.title = title_text
                     break
 
-        # Extract price using hierarchical search ONLY
-        # Hierarchy: div.w-full.lg:w-2/5 > div.flex-col.gap-2... > span.text-blue-royal.text-xl
-        # Verify by checking for button "Ver mais formas de pagamento"
+        # Extract price: Find "Adicionar ao Carrinho" button and get price BEFORE it
         try:
-            # Step 1: Find parent div with w-full and lg:w-2/5
-            parent_container = None
-            for div in soup.find_all('div'):
-                classes = div.get('class', [])
-                class_str = ' '.join(classes) if classes else ''
-                if 'w-full' in classes and 'lg:w-2/5' in class_str:
-                    parent_container = div
+            # Find button with "Adicionar ao Carrinho" text
+            add_to_cart_button = None
+            for button in soup.find_all('button'):
+                button_text = button.get_text(strip=True).lower()
+                if 'adicionar ao carrinho' in button_text:
+                    add_to_cart_button = button
                     break
 
-            if parent_container:
-                # Step 2: Find inner container (flex-col gap-2 w-full sm:max-w-[320px])
-                inner_container = None
-                for div in parent_container.find_all('div'):
-                    classes = div.get('class', [])
-                    class_str = ' '.join(classes) if classes else ''
-                    if ('flex-col' in classes and 'gap-2' in classes and
-                        'w-full' in classes and 'sm:max-w-[320px]' in class_str):
-                        inner_container = div
+            if add_to_cart_button:
+                # Get the parent container of the button
+                parent = add_to_cart_button.parent
+
+                # Search for price span in previous siblings or parent's previous content
+                # Go up the tree looking for the price
+                for _ in range(5):  # Go up max 5 levels
+                    if parent is None:
                         break
 
-                if inner_container:
-                    # Step 3: Verify we're in the right place - check for payment button
-                    has_payment_button = False
-                    for button in inner_container.find_all('button'):
-                        button_text = button.get_text(strip=True).lower()
-                        if 'formas de pagamento' in button_text:
-                            has_payment_button = True
-                            break
+                    # Find all spans with text-blue-royal in this container
+                    for span in parent.find_all('span'):
+                        classes = span.get('class', [])
+                        class_str = ' '.join(classes) if classes else ''
+                        # Skip old price (has line-through)
+                        if 'line-through' in class_str:
+                            continue
+                        # Look for the current price span (text-blue-royal, text-xl)
+                        if 'text-blue-royal' in class_str and 'text-xl' in class_str:
+                            price_text = span.get_text(strip=True)
+                            parsed_price = self._parse_price(price_text)
+                            if parsed_price and parsed_price > 0:
+                                product.price = parsed_price
+                                break
 
-                    if has_payment_button:
-                        # Step 4: Find the price span (text-blue-royal text-xl)
-                        for span in inner_container.find_all('span'):
-                            classes = span.get('class', [])
-                            class_str = ' '.join(classes) if classes else ''
-                            # Skip old price (has line-through)
-                            if 'line-through' in class_str:
-                                continue
-                            # Must have text-blue-royal AND text-xl
-                            if 'text-blue-royal' in class_str and 'text-xl' in class_str:
-                                price_text = span.get_text(strip=True)
-                                parsed_price = self._parse_price(price_text)
-                                if parsed_price and parsed_price > 0:
-                                    product.price = parsed_price
-                                    break
+                    if product.price:
+                        break
+                    parent = parent.parent
         except Exception:
             pass  # Price extraction failed
 

@@ -36,10 +36,9 @@ class CarrefourScraper:
     """Scraper for Carrefour supermarket product pages."""
 
     BASE_URL = 'https://mercado.carrefour.com.br'
-    DEFAULT_CEP = '90420-010'  # Default CEP for price region
 
     def __init__(self, cep: str = None):
-        self.cep = cep or self.DEFAULT_CEP
+        self.cep = cep or settings.CEP
         self.session = requests.Session()
         self._setup_session()
 

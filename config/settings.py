@@ -32,6 +32,9 @@ class Settings:
         self.CHECK_INTERVAL_MINUTES = int(os.getenv('CHECK_INTERVAL_MINUTES', '60'))
         self.PRICE_DROP_THRESHOLD_PERCENT = float(os.getenv('PRICE_DROP_THRESHOLD_PERCENT', '10'))
 
+        # Regional settings (CEP for Carrefour pricing)
+        self.CEP = os.getenv('CEP', '90420-010')
+
         # User agents for scraping (rotated to avoid detection)
         self.USER_AGENTS = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

@@ -1,11 +1,12 @@
 """
 Carrefour product scraper for price monitoring.
-Uses web scraping to extract product information from mercado.carrefour.com.br.
+Uses web scraping and VTEX API to extract product information from mercado.carrefour.com.br.
 """
 
 import re
 import random
 import time
+import json
 from decimal import Decimal
 from typing import Optional
 from dataclasses import dataclass
@@ -43,7 +44,7 @@ class CarrefourScraper:
     def _setup_session(self) -> None:
         """Configure session with appropriate headers."""
         self.session.headers.update({
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json',
             'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
@@ -63,12 +64,10 @@ class CarrefourScraper:
     def extract_sku(self, url: str) -> Optional[str]:
         """Extract SKU/product ID from Carrefour URL."""
         # URL format: https://mercado.carrefour.com.br/product-name-SKU/p
-        # Example: https://mercado.carrefour.com.br/arroz-branco-tipo-1-carrefour-5-kg-3043/p
         match = re.search(r'-(\d+)/p', url)
         if match:
             return match.group(1)
 
-        # Try alternative patterns
         match = re.search(r'/(\d+)/p', url)
         if match:
             return match.group(1)
@@ -77,21 +76,15 @@ class CarrefourScraper:
 
     def extract_title_from_url(self, url: str) -> Optional[str]:
         """Extract product title from URL slug."""
-        # URL format: https://mercado.carrefour.com.br/product-name-SKU/p
-        # Extract the slug part and convert to title
         parsed = urlparse(url)
         path = parsed.path.strip('/')
 
-        # Remove /p suffix if present
         if path.endswith('/p'):
             path = path[:-2]
 
-        # The path should be like: product-name-slug-SKU
-        # Remove the SKU (last number after hyphen)
         slug = re.sub(r'-\d+$', '', path)
 
         if slug:
-            # Convert slug to title: replace hyphens with spaces and capitalize
             title = slug.replace('-', ' ').title()
             return title
 
@@ -116,34 +109,110 @@ class CarrefourScraper:
         if not price_text:
             return None
 
-        price_text = price_text.strip()
-
-        # Remove ALL non-numeric characters except dots and commas
+        price_text = str(price_text).strip()
         price_text = re.sub(r'[^\d.,]', '', price_text)
 
         if not price_text:
             return None
 
-        # Handle Brazilian format: R$ 1.234,56
         if ',' in price_text and '.' in price_text:
-            # Has both: Brazilian format (. = thousand, , = decimal)
             price_text = price_text.replace('.', '').replace(',', '.')
         elif ',' in price_text:
-            # Only comma: decimal separator (e.g., 39,60 -> 39.60)
             price_text = price_text.replace(',', '.')
         elif '.' in price_text:
-            # Only dot - check if it's decimal or thousand separator
             parts = price_text.split('.')
-            if len(parts) == 2:
-                after_dot = parts[1]
-                if len(after_dot) == 3:
-                    # Likely thousand separator
-                    price_text = price_text.replace('.', '')
+            if len(parts) == 2 and len(parts[1]) == 3:
+                price_text = price_text.replace('.', '')
 
         try:
             return Decimal(price_text)
         except Exception:
             return None
+
+    def _fetch_price_from_api(self, sku: str) -> Optional[dict]:
+        """Try to fetch product info from VTEX API."""
+        self.session.headers['User-Agent'] = self._get_random_user_agent()
+
+        # VTEX API endpoints commonly used
+        api_urls = [
+            f"{self.BASE_URL}/api/catalog_system/pub/products/search?fq=productId:{sku}",
+            f"{self.BASE_URL}/api/catalog_system/pub/products/search?fq=skuId:{sku}",
+            f"{self.BASE_URL}/api/catalog_system/pub/products/search/{sku}",
+        ]
+
+        for api_url in api_urls:
+            try:
+                response = self.session.get(
+                    api_url,
+                    timeout=settings.REQUEST_TIMEOUT,
+                    headers={'Accept': 'application/json'}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0:
+                        return data[0]
+            except Exception:
+                continue
+
+        return None
+
+    def _extract_price_from_json_ld(self, soup: BeautifulSoup) -> Optional[Decimal]:
+        """Extract price from JSON-LD structured data."""
+        scripts = soup.find_all('script', type='application/ld+json')
+        for script in scripts:
+            try:
+                data = json.loads(script.string)
+                # Handle single product
+                if isinstance(data, dict):
+                    if data.get('@type') == 'Product':
+                        offers = data.get('offers', {})
+                        if isinstance(offers, dict):
+                            price = offers.get('price') or offers.get('lowPrice')
+                            if price:
+                                return Decimal(str(price))
+                        elif isinstance(offers, list) and len(offers) > 0:
+                            price = offers[0].get('price')
+                            if price:
+                                return Decimal(str(price))
+                # Handle list of items
+                elif isinstance(data, list):
+                    for item in data:
+                        if item.get('@type') == 'Product':
+                            offers = item.get('offers', {})
+                            if isinstance(offers, dict):
+                                price = offers.get('price') or offers.get('lowPrice')
+                                if price:
+                                    return Decimal(str(price))
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue
+        return None
+
+    def _extract_price_from_state(self, html: str) -> Optional[Decimal]:
+        """Extract price from __STATE__ or similar JavaScript state."""
+        # Look for price in JavaScript state objects
+        patterns = [
+            r'"sellingPrice"\s*:\s*(\d+(?:\.\d+)?)',
+            r'"Price"\s*:\s*(\d+(?:\.\d+)?)',
+            r'"price"\s*:\s*(\d+(?:\.\d+)?)',
+            r'"bestPrice"\s*:\s*(\d+(?:\.\d+)?)',
+            r'"spotPrice"\s*:\s*(\d+(?:\.\d+)?)',
+            r'sellingPrice.*?(\d+(?:,\d+)?)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                price_str = match.group(1)
+                # VTEX stores prices in cents sometimes
+                price = self._parse_price(price_str)
+                if price:
+                    # If price seems too high (in cents), divide by 100
+                    if price > 10000:
+                        price = price / 100
+                    if 0.01 < price < 100000:  # Sanity check
+                        return Decimal(str(round(float(price), 2)))
+
+        return None
 
     def _fetch_page(self, url: str) -> Optional[str]:
         """Fetch page content with error handling."""
@@ -159,10 +228,10 @@ class CarrefourScraper:
             return response.text
 
         except requests.exceptions.Timeout:
-            raise Exception("Request timed out. O site pode estar lento ou bloqueando requests.")
+            raise Exception("Request timed out. O site pode estar lento.")
         except requests.exceptions.HTTPError as e:
             if response.status_code == 403:
-                raise Exception("Acesso bloqueado pelo site. Tente novamente mais tarde.")
+                raise Exception("Acesso bloqueado pelo site.")
             raise Exception(f"HTTP error: {e}")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Request failed: {e}")
@@ -172,16 +241,14 @@ class CarrefourScraper:
         soup = BeautifulSoup(html, 'html.parser')
         product = ScrapedProduct(sku=sku, url=url)
 
-        # Extract title - VTEX common selectors (Carrefour uses VTEX)
+        # Extract title
         title_selectors = [
             '.vtex-store-components-3-x-productBrand',
             '.vtex-store-components-3-x-productNameContainer',
+            'h1[class*="productName"]',
             '.productName',
             'h1.product-name',
             '.product-title',
-            'h1[class*="productName"]',
-            '.vtex-product-summary-2-x-productBrand',
-            'span[class*="vtex-store-components"][class*="productBrand"]',
             'h1',
         ]
 
@@ -193,68 +260,39 @@ class CarrefourScraper:
                     product.title = title_text
                     break
 
-        # Extract price - Try multiple selectors for Carrefour/VTEX
-        price_selectors = [
-            # Carrefour specific selectors
-            '[class*="carrefour"][class*="price"] [class*="sellingPrice"]',
-            '[class*="carrefour"][class*="Price"] [class*="Value"]',
-            # VTEX generic selectors
-            '.vtex-product-price-1-x-sellingPrice',
-            '.vtex-product-price-1-x-sellingPriceValue',
-            '.vtex-store-components-3-x-sellingPrice',
-            '.vtex-store-components-3-x-sellingPriceValue',
-            '[class*="sellingPrice"][class*="Value"]',
-            '.skuBestPrice',
-            '.price-best-price',
-            '.selling-price',
-            '[class*="ProductPrice"][class*="Value"]',
-            '[class*="productPrice"][class*="Value"]',
-        ]
+        # Try multiple methods to get price
+        # Method 1: JSON-LD structured data
+        product.price = self._extract_price_from_json_ld(soup)
 
-        for selector in price_selectors:
-            price_elem = soup.select_one(selector)
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                parsed_price = self._parse_price(price_text)
-                if parsed_price and parsed_price > 0:
-                    product.price = parsed_price
-                    break
-
-        # If still no price, try finding any element with R$ in text
+        # Method 2: JavaScript state
         if not product.price:
-            price_pattern = re.compile(r'R\$\s*[\d.,]+')
-            for elem in soup.find_all(text=price_pattern):
-                match = price_pattern.search(elem)
-                if match:
-                    parsed_price = self._parse_price(match.group())
+            product.price = self._extract_price_from_state(html)
+
+        # Method 3: CSS selectors
+        if not product.price:
+            price_selectors = [
+                '[class*="sellingPrice"] [class*="currencyInteger"]',
+                '[class*="sellingPriceValue"]',
+                '[class*="ProductPrice"] [class*="Value"]',
+                '.vtex-product-price-1-x-sellingPriceValue',
+                '.skuBestPrice',
+                '.price-best-price',
+                '[data-testid="price"]',
+            ]
+
+            for selector in price_selectors:
+                price_elem = soup.select_one(selector)
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    parsed_price = self._parse_price(price_text)
                     if parsed_price and parsed_price > 0:
                         product.price = parsed_price
                         break
 
-        # Extract original price (if on sale)
-        original_selectors = [
-            '.vtex-product-price-1-x-listPrice',
-            '.vtex-store-components-3-x-listPrice',
-            '.skuListPrice',
-            '.list-price',
-            '.old-price',
-            '[class*="listPrice"]',
-        ]
-
-        for selector in original_selectors:
-            original_elem = soup.select_one(selector)
-            if original_elem:
-                original_text = original_elem.get_text(strip=True)
-                product.original_price = self._parse_price(original_text)
-                if product.original_price:
-                    break
-
-        # Extract image URL
+        # Extract image
         image_selectors = [
             '.vtex-store-components-3-x-productImage img',
-            '.product-image img',
             '[class*="productImage"] img',
-            '.main-image img',
             'img[class*="product"]',
         ]
 
@@ -266,18 +304,6 @@ class CarrefourScraper:
                     break
 
         # Check availability
-        unavailable_indicators = [
-            '.vtex-store-components-3-x-unavailableContainer',
-            '.product-unavailable',
-            '[class*="unavailable"]',
-        ]
-
-        for selector in unavailable_indicators:
-            if soup.select_one(selector):
-                product.is_available = False
-                break
-
-        # Also check for "indisponível" text
         page_text = soup.get_text().lower()
         if 'indisponível' in page_text or 'esgotado' in page_text:
             if not product.price:
@@ -286,15 +312,7 @@ class CarrefourScraper:
         return product
 
     def scrape_product(self, url: str) -> ScrapedProduct:
-        """
-        Scrape product information from a Carrefour URL.
-
-        Args:
-            url: Carrefour product URL
-
-        Returns:
-            ScrapedProduct with extracted information
-        """
+        """Scrape product information from a Carrefour URL."""
         if not self.validate_url(url):
             return ScrapedProduct(
                 sku='',
@@ -308,54 +326,73 @@ class CarrefourScraper:
             sku = 'unknown'
 
         normalized_url = self.normalize_url(url)
-
-        # Extract title from URL as fallback
         url_title = self.extract_title_from_url(normalized_url)
 
         try:
             self._random_delay()
-            html = self._fetch_page(normalized_url)
 
-            if not html:
-                # Use URL-based info if scraping fails
-                if url_title:
+            # Try API first (more reliable)
+            api_data = self._fetch_price_from_api(sku)
+            if api_data:
+                title = api_data.get('productName') or api_data.get('name')
+                items = api_data.get('items', [])
+                price = None
+                if items:
+                    sellers = items[0].get('sellers', [])
+                    if sellers:
+                        offer = sellers[0].get('commertialOffer', {})
+                        price = offer.get('Price') or offer.get('spotPrice')
+
+                if title and price:
                     return ScrapedProduct(
                         sku=sku,
                         url=normalized_url,
-                        title=url_title,
-                        is_available=True,
-                        error="Preço não disponível via scraping. Título extraído da URL."
+                        title=title,
+                        price=Decimal(str(price)),
+                        is_available=True
                     )
-                return ScrapedProduct(
-                    sku=sku,
-                    url=normalized_url,
-                    is_available=False,
-                    error="Falha ao buscar conteúdo da página"
-                )
 
-            product = self._parse_product_page(html, normalized_url, sku)
+            # Fallback to HTML scraping
+            html = self._fetch_page(normalized_url)
 
-            # If title wasn't found via scraping, use URL title
-            if not product.title and url_title:
-                product.title = url_title
+            if html:
+                product = self._parse_product_page(html, normalized_url, sku)
 
-            # If we have a title (from URL or scraping), consider it a success
-            if product.title:
-                product.error = None
-            else:
-                product.error = "Não foi possível extrair informações do produto."
+                if not product.title and url_title:
+                    product.title = url_title
 
-            return product
+                if product.title and product.price:
+                    product.error = None
+                    return product
+                elif product.title and not product.price:
+                    product.error = "Não foi possível extrair o preço. Site pode estar bloqueando."
+                    return product
 
-        except Exception as e:
-            # Even if scraping fails, we can use URL-based info
+            # Last resort: URL title only
             if url_title:
                 return ScrapedProduct(
                     sku=sku,
                     url=normalized_url,
                     title=url_title,
                     is_available=True,
-                    error=f"Scraping falhou ({str(e)}), título extraído da URL."
+                    error="Não foi possível extrair o preço. Tente novamente mais tarde."
+                )
+
+            return ScrapedProduct(
+                sku=sku,
+                url=normalized_url,
+                is_available=False,
+                error="Falha ao buscar informações do produto."
+            )
+
+        except Exception as e:
+            if url_title:
+                return ScrapedProduct(
+                    sku=sku,
+                    url=normalized_url,
+                    title=url_title,
+                    is_available=True,
+                    error=f"Erro: {str(e)}"
                 )
             return ScrapedProduct(
                 sku=sku,
@@ -365,15 +402,7 @@ class CarrefourScraper:
             )
 
     def scrape_multiple(self, urls: list) -> list:
-        """
-        Scrape multiple products with delays between requests.
-
-        Args:
-            urls: List of Carrefour product URLs
-
-        Returns:
-            List of ScrapedProduct objects
-        """
+        """Scrape multiple products with delays between requests."""
         results = []
         for i, url in enumerate(urls):
             print(f"Buscando produto {i + 1}/{len(urls)}...")

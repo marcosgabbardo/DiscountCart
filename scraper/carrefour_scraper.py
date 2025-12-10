@@ -260,8 +260,7 @@ class CarrefourScraper:
                     product.title = title_text
                     break
 
-        # Try multiple methods to get price
-        # Method 1: Hierarchical search (most reliable for Carrefour)
+        # Extract price using hierarchical search ONLY
         # Path: flex flex-col order-2... > hidden md:block... > text-blue-royal...
         try:
             # Find the sticky sidebar container (has order-2 and lg:sticky)
@@ -295,42 +294,7 @@ class CarrefourScraper:
                                 product.price = parsed_price
                                 break
         except Exception:
-            pass  # Continue to fallback methods
-
-        # Method 2: Direct CSS selectors (fallback)
-        if not product.price:
-            price_selectors = [
-                # Carrefour specific - blue royal price (main price displayed)
-                'span.text-blue-royal.font-bold.text-xl',
-                'span.text-blue-royal.font-bold.text-lg',
-                'span[class*="text-blue-royal"][class*="font-bold"]',
-                'span[class*="blue-royal"]',
-                # Other Carrefour selectors
-                '[class*="sellingPrice"] [class*="currencyInteger"]',
-                '[class*="sellingPriceValue"]',
-                '[class*="ProductPrice"] [class*="Value"]',
-                '.vtex-product-price-1-x-sellingPriceValue',
-                '.skuBestPrice',
-                '.price-best-price',
-                '[data-testid="price"]',
-            ]
-
-            for selector in price_selectors:
-                price_elem = soup.select_one(selector)
-                if price_elem:
-                    price_text = price_elem.get_text(strip=True)
-                    parsed_price = self._parse_price(price_text)
-                    if parsed_price and parsed_price > 0:
-                        product.price = parsed_price
-                        break
-
-        # Method 3: JSON-LD structured data (fallback)
-        if not product.price:
-            product.price = self._extract_price_from_json_ld(soup)
-
-        # Method 4: JavaScript state (last resort)
-        if not product.price:
-            product.price = self._extract_price_from_state(html)
+            pass  # Price extraction failed
 
         # Extract image
         image_selectors = [
@@ -374,7 +338,7 @@ class CarrefourScraper:
         try:
             self._random_delay()
 
-            # Try HTML scraping first (CSS selectors have most accurate current price)
+            # HTML scraping only - hierarchical search for price
             html = self._fetch_page(normalized_url)
 
             if html:
@@ -387,32 +351,7 @@ class CarrefourScraper:
                     product.error = None
                     return product
 
-            # Fallback to API if HTML scraping didn't get price
-            api_data = self._fetch_price_from_api(sku)
-            if api_data:
-                title = api_data.get('productName') or api_data.get('name')
-                items = api_data.get('items', [])
-                price = None
-                if items:
-                    sellers = items[0].get('sellers', [])
-                    if sellers:
-                        offer = sellers[0].get('commertialOffer', {})
-                        price = offer.get('Price') or offer.get('spotPrice')
-
-                if price:
-                    return ScrapedProduct(
-                        sku=sku,
-                        url=normalized_url,
-                        title=title or url_title,
-                        price=Decimal(str(price)),
-                        is_available=True
-                    )
-
-            # If we got title from HTML but no price
-            if html:
-                product = self._parse_product_page(html, normalized_url, sku)
-                if not product.title and url_title:
-                    product.title = url_title
+                # Got title but no price from hierarchical search
                 if product.title and not product.price:
                     product.error = "Não foi possível extrair o preço. Site pode estar bloqueando."
                     return product

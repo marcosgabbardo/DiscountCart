@@ -523,14 +523,22 @@ def compare_category(category_name: str):
         sys.exit(1)
 
 
-def categorize_products():
-    """Categorize all products without a category."""
-    print("Categorizando produtos sem categoria...")
+def categorize_products(recategorize_all: bool = False):
+    """Categorize products without a category, or recategorize all."""
+    if recategorize_all:
+        print("Recategorizando TODOS os produtos...")
+        print("Isso irá atualizar as categorias de todos os produtos.\n")
+    else:
+        print("Categorizando produtos sem categoria...")
     print("Isso pode demorar um pouco.\n")
 
     try:
         service = CategoryService()
-        categorized = service.categorize_all_uncategorized()
+
+        if recategorize_all:
+            categorized = service.recategorize_all()
+        else:
+            categorized = service.categorize_all_uncategorized()
 
         if not categorized:
             print("Todos os produtos já estão categorizados!")
@@ -552,6 +560,37 @@ def categorize_products():
 
     except Exception as e:
         print(f"Erro ao categorizar produtos: {e}")
+        sys.exit(1)
+
+
+def search_category(search_term: str):
+    """Search for categories containing a term."""
+    try:
+        service = CategoryService()
+        categories = service.search_categories(search_term)
+
+        if not categories:
+            print(f"Nenhuma categoria encontrada com '{search_term}'.")
+            return
+
+        print(f"\n🔍 Categorias com '{search_term}' ({len(categories)} encontradas)")
+        print("-" * 70)
+
+        table_data = []
+        for cat in categories:
+            table_data.append([
+                cat['category'],
+                cat['product_count'],
+                format_currency(Decimal(str(cat['min_price']))) if cat['min_price'] else '-',
+                format_currency(Decimal(str(cat['max_price']))) if cat['max_price'] else '-',
+            ])
+
+        headers = ["Categoria", "Qtd", "Menor Preço", "Maior Preço"]
+        print(tabulate(table_data, headers=headers, tablefmt="simple"))
+        print("-" * 70)
+
+    except Exception as e:
+        print(f"Erro ao buscar categorias: {e}")
         sys.exit(1)
 
 
@@ -667,7 +706,6 @@ Exemplos:
   %(prog)s add "https://mercado.carrefour.com.br/produto-456/p" "R$50,00"
   %(prog)s list
   %(prog)s list --store zaffari
-  %(prog)s list --store carrefour
   %(prog)s check
   %(prog)s update
   %(prog)s alerts
@@ -675,9 +713,11 @@ Exemplos:
   %(prog)s detail 1
   %(prog)s remove 1
   %(prog)s categories
-  %(prog)s category Leite
-  %(prog)s compare Leite
+  %(prog)s category "Leite UHT Integral"
+  %(prog)s compare "Coração de Frango"
+  %(prog)s search-category leite
   %(prog)s categorize
+  %(prog)s categorize --all
   %(prog)s init-db
   %(prog)s migrate
         """
@@ -735,7 +775,13 @@ Exemplos:
     compare_parser.add_argument('category_name', help='Nome da categoria para comparar')
 
     # categorize command
-    subparsers.add_parser('categorize', help='Categorizar produtos sem categoria usando IA')
+    categorize_parser = subparsers.add_parser('categorize', help='Categorizar produtos sem categoria usando IA')
+    categorize_parser.add_argument('--all', '-a', action='store_true',
+                                   help='Recategorizar TODOS os produtos (não apenas os sem categoria)')
+
+    # search-category command
+    search_cat_parser = subparsers.add_parser('search-category', help='Buscar categorias por termo')
+    search_cat_parser.add_argument('search_term', help='Termo para buscar nas categorias')
 
     args = parser.parse_args()
 
@@ -771,7 +817,9 @@ Exemplos:
     elif args.command == 'compare':
         compare_category(args.category_name)
     elif args.command == 'categorize':
-        categorize_products()
+        categorize_products(recategorize_all=args.all)
+    elif args.command == 'search-category':
+        search_category(args.search_term)
 
 
 if __name__ == '__main__':

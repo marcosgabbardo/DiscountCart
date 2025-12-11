@@ -211,15 +211,39 @@ class ProductService:
         return self.get_product_by_id(product_id)
 
     def update_all_prices(self) -> List[Product]:
-        """Update prices for all active products."""
+        """Update prices for all active products with retry on block."""
+        import time
+
         products = self.get_all_products(active_only=True)
         updated = []
+        failed = []
+        retry_delay = 30  # seconds to wait when blocked
 
         for i, product in enumerate(products):
             print(f"Atualizando {i + 1}/{len(products)}: {product.title[:50] if product.title else product.asin}...")
-            updated_product = self.update_product_price(product.id)
-            if updated_product:
-                updated.append(updated_product)
+
+            # Try up to 2 times
+            for attempt in range(2):
+                try:
+                    updated_product = self.update_product_price(product.id)
+                    if updated_product:
+                        updated.append(updated_product)
+                    break
+                except ValueError as e:
+                    if 'bloqueando' in str(e).lower() or 'blocked' in str(e).lower():
+                        if attempt == 0:
+                            print(f"  ⚠️  Bloqueado. Aguardando {retry_delay}s antes de tentar novamente...")
+                            time.sleep(retry_delay)
+                        else:
+                            print(f"  ❌ Falhou após retry: {e}")
+                            failed.append((product, str(e)))
+                    else:
+                        print(f"  ❌ Erro: {e}")
+                        failed.append((product, str(e)))
+                        break
+
+        if failed:
+            print(f"\n⚠️  {len(failed)} produto(s) não puderam ser atualizados.")
 
         return updated
 

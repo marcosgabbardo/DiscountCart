@@ -768,11 +768,11 @@ Exemplos:
 
     # category command
     category_parser = subparsers.add_parser('category', help='Mostrar produtos de uma categoria')
-    category_parser.add_argument('category_name', help='Nome da categoria (ex: Leite, Queijo)')
+    category_parser.add_argument('category_name', nargs='+', help='Nome da categoria (ex: Leite UHT Integral)')
 
     # compare command
     compare_parser = subparsers.add_parser('compare', help='Comparar preços por categoria')
-    compare_parser.add_argument('category_name', help='Nome da categoria para comparar')
+    compare_parser.add_argument('category_name', nargs='+', help='Nome da categoria para comparar')
 
     # categorize command
     categorize_parser = subparsers.add_parser('categorize', help='Categorizar produtos sem categoria usando IA')
@@ -813,9 +813,9 @@ Exemplos:
     elif args.command == 'categories':
         list_categories()
     elif args.command == 'category':
-        show_category(args.category_name)
+        show_category(' '.join(args.category_name))
     elif args.command == 'compare':
-        compare_category(args.category_name)
+        compare_category(' '.join(args.category_name))
     elif args.command == 'categorize':
         categorize_products(recategorize_all=args.all)
     elif args.command == 'search-category':

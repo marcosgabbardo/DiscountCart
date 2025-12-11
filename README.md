@@ -1,12 +1,14 @@
 # DiscountCart - Price Monitor
 
-A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (Brazil). Get terminal alerts when prices reach your target and compare prices between stores.
+A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (Brazil). Get terminal alerts when prices reach your target, compare prices between stores, and find the cheapest products by category using AI-powered categorization.
 
 ## Features
 
 - **Multi-Store Support**: Monitor products from Zaffari and Carrefour
 - **Add Products**: Monitor any product via URL (auto-detects store)
 - **Set Target Price**: Define the price you want to pay
+- **AI-Powered Categorization**: Automatic product categorization using Anthropic Claude API
+- **Price Comparison by Category**: Compare prices of similar products across stores (e.g., all "Leite UHT Integral")
 - **Price History**: Track price variations over time
 - **Smart Alerts**: Get notified when:
   - Price reaches your target
@@ -17,6 +19,25 @@ A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (
 - **Daily Scheduler**: Automatic updates at 8:00 AM with Excel reports
 - **Excel Reports**: Generated reports with price changes, store info, and alert status
 - **Filter by Store**: List products from a specific store
+
+## Product Categorization
+
+The AI categorization system creates **granular categories** that represent the generic product type (without brand), enabling direct price comparison between equivalent products from different stores/brands.
+
+### Examples of categorization:
+
+| Product Title | Category |
+|--------------|----------|
+| Leite Italac UHT Integral 1L | Leite UHT Integral |
+| Leite Piracanjuba Desnatado 1L | Leite UHT Desnatado |
+| Coração de Frango Sadia 1kg | Coração de Frango |
+| Peito de Frango Seara | Peito de Frango |
+| Requeijão Vigor Cremoso 200g | Requeijão |
+| YoPro Morango 250ml | Bebida Láctea |
+| Kefir Natural Keffy 170g | Kefir |
+| Água de Coco Sococo 1L | Água de Coco |
+| Castanha de Caju Torrada 100g | Castanha de Caju |
+| Picanha Bovina Resfriada kg | Picanha |
 
 ## Supported Stores
 
@@ -29,6 +50,7 @@ A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (
 
 - Python 3.8+
 - MySQL 5.7+ or MariaDB 10.3+
+- Anthropic API Key (for product categorization)
 
 ## Installation
 
@@ -54,7 +76,7 @@ pip install -r requirements.txt
 4. **Configure environment**:
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials
+# Edit .env with your database credentials and Anthropic API key
 ```
 
 5. **Initialize the database**:
@@ -62,7 +84,7 @@ cp .env.example .env
 python price_monitor.py init-db
 ```
 
-6. **If upgrading from a previous version** (Zaffari-only):
+6. **If upgrading from a previous version**:
 ```bash
 python price_monitor.py migrate
 ```
@@ -82,10 +104,26 @@ DB_NAME=amazon_price_monitor
 # Scraping Configuration
 SCRAPE_DELAY_MIN=2
 SCRAPE_DELAY_MAX=5
+REQUEST_TIMEOUT=30
 
 # Alert Configuration
+CHECK_INTERVAL_MINUTES=60
 PRICE_DROP_THRESHOLD_PERCENT=10
+
+# Regional Configuration (for Carrefour pricing)
+CEP=90420-010
+
+# Anthropic API Configuration (for product categorization)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
+
+### Getting an Anthropic API Key
+
+1. Go to [console.anthropic.com](https://console.anthropic.com)
+2. Create an account or sign in
+3. Navigate to API Keys
+4. Create a new API key
+5. Copy the key to your `.env` file
 
 ## Usage
 
@@ -101,7 +139,20 @@ python price_monitor.py add "https://www.zaffari.com.br/produto-123/p" "R$80,99"
 python price_monitor.py add "https://mercado.carrefour.com.br/produto-456/p" "R$75,00"
 ```
 
-The store is automatically detected from the URL.
+The store is automatically detected from the URL, and the product is automatically categorized using AI.
+
+Output:
+```
+✅ Produto adicionado com sucesso!
+--------------------------------------------------
+ID: 5
+Loja: Carrefour
+Título: Leite Integral Piracanjuba 1L
+SKU: 12345
+Categoria: Leite UHT Integral
+Preço Atual: R$ 5,49
+Preço Alvo: R$ 5,00
+```
 
 Accepted price formats:
 - `R$80,99`
@@ -137,6 +188,130 @@ python price_monitor.py list --store zaffari
 python price_monitor.py list --store carrefour
 ```
 
+---
+
+## Category Commands
+
+### List All Categories
+
+View all product categories with statistics:
+
+```bash
+python price_monitor.py categories
+```
+
+Output:
+```
+📁 Categorias de Produtos (12)
+--------------------------------------------------------------------------------
+Categoria              Qtd    Menor Preço    Maior Preço    Média
+Arroz Branco           3      R$ 22,90       R$ 28,50       R$ 25,30
+Coração de Frango      2      R$ 12,99       R$ 15,90       R$ 14,45
+Leite UHT Integral     4      R$ 4,99        R$ 6,29        R$ 5,50
+Requeijão              2      R$ 8,49        R$ 9,99        R$ 9,24
+...
+--------------------------------------------------------------------------------
+```
+
+### View Products in a Category
+
+```bash
+python price_monitor.py category Leite UHT Integral
+```
+
+Output:
+```
+📁 Categoria: Leite UHT Integral (4 produtos)
+------------------------------------------------------------------------------------------
+ID   Loja   Produto                                     Preço Atual    Menor Preço
+12   🔵     Leite Integral Piracanjuba 1L               R$ 4,99        R$ 4,79
+5    🟢     Leite Italac Integral UHT 1L                R$ 5,29        R$ 5,09
+8    🔵     Leite Integral Parmalat 1L                  R$ 5,49        R$ 5,29
+3    🟢     Leite Integral Elegê 1L                     R$ 6,29        R$ 5,99
+------------------------------------------------------------------------------------------
+
+💰 Mais barato: Leite Integral Piracanjuba 1L
+   Loja: Carrefour
+   Preço: R$ 4,99
+```
+
+### Compare Prices by Category
+
+Compare all products in a category, ranked by price:
+
+```bash
+python price_monitor.py compare Coração de Frango
+```
+
+Output:
+```
+📊 Comparação de Preços: Coração de Frango
+----------------------------------------------------------------------------------------------------
+Legenda: 🟢 Zaffari | 🔵 Carrefour
+Rank   Loja   Produto                              Atual          Mínimo         Média 30d
+🥇     🔵     Coração de Frango Sadia 1kg          R$ 12,99       R$ 11,90       R$ 13,50
+🥈     🟢     Coração de Frango Perdigão 1kg       R$ 14,49       R$ 13,99       R$ 14,80
+🥉     🔵     Coração de Frango Aurora 1kg         R$ 15,90       R$ 14,50       R$ 15,20
+----------------------------------------------------------------------------------------------------
+
+💡 Economia potencial escolhendo o mais barato: R$ 2,91
+```
+
+### Search Categories
+
+Find categories by keyword:
+
+```bash
+python price_monitor.py search-category leite
+```
+
+Output:
+```
+🔍 Categorias com 'leite' (3 encontradas)
+----------------------------------------------------------------------
+Categoria              Qtd    Menor Preço    Maior Preço
+Leite UHT Integral     4      R$ 4,99        R$ 6,29
+Leite UHT Desnatado    2      R$ 5,19        R$ 5,89
+Leite Condensado       3      R$ 6,49        R$ 8,99
+----------------------------------------------------------------------
+```
+
+### Categorize Products
+
+**Categorize only uncategorized products:**
+```bash
+python price_monitor.py categorize
+```
+
+**Recategorize ALL products** (useful after updating categorization logic):
+```bash
+python price_monitor.py categorize --all
+```
+
+Output:
+```
+Recategorizando TODOS os produtos...
+Isso irá atualizar as categorias de todos os produtos.
+
+[1/15] Categorizando: Leite Italac UHT Integral 1L...
+  -> Categoria: Leite UHT Integral
+[2/15] Categorizando: Coração de Frango Sadia Congelado 1kg...
+  -> Categoria: Coração de Frango
+...
+
+✅ 15 produto(s) categorizado(s)
+
+Resumo por categoria:
+  Arroz Branco: 2 produto(s)
+  Coração de Frango: 3 produto(s)
+  Leite UHT Integral: 4 produto(s)
+  ...
+```
+
+---
+
+## Other Commands
+
 ### Check Prices and Alerts
 
 ```bash
@@ -163,7 +338,7 @@ python price_monitor.py history 1 --days 30
 python price_monitor.py detail 1
 ```
 
-Output includes the store name:
+Output includes category:
 ```
 ============================================================
 📦 Arroz Branco Tipo 1 Carrefour 5kg
@@ -171,7 +346,16 @@ Output includes the store name:
 ID:           3
 Loja:         Carrefour
 SKU:          3043
+Categoria:    Arroz Branco
 URL:          https://mercado.carrefour.com.br/arroz-branco-tipo-1-carrefour-5-kg-3043/p
+
+💰 Preços:
+   Atual:     R$ 24,90
+   Alvo:      R$ 22,00
+   Mínimo:    R$ 23,50
+   Máximo:    R$ 26,90
+   Média (7d):  R$ 24,50
+   Média (30d): R$ 24,80
 ...
 ```
 
@@ -189,13 +373,13 @@ python price_monitor.py remove 1
 
 ### Run Database Migration
 
-If you're upgrading from the Zaffari-only version:
+If you're upgrading from a previous version:
 
 ```bash
 python price_monitor.py migrate
 ```
 
-This adds the `store` column to existing products (defaults to 'zaffari').
+This adds the `store` and `category` columns to existing products.
 
 ## Scheduler
 
@@ -243,13 +427,34 @@ python C:\path\to\DiscountCart\scheduler.py --now
 
 The application uses 3 main tables:
 
-- **products**: Monitored products with URLs, store, and target prices
+- **products**: Monitored products with URLs, store, category, and target prices
 - **price_history**: Historical price records
 - **alerts**: Alert configurations and status
 
 Key fields in `products`:
 - `store`: ENUM('zaffari', 'carrefour') - identifies the source store
+- `category`: VARCHAR(100) - AI-assigned product category
 - `asin`: Product SKU (unique per store)
+
+## CLI Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `init-db` | Initialize database schema |
+| `migrate` | Run migration for multi-store and category support |
+| `add URL PRICE` | Add product to monitor (auto-categorizes) |
+| `list [--store]` | List all products (optionally filtered by store) |
+| `check` | Check prices and show alerts |
+| `update` | Update all product prices |
+| `alerts` | Show triggered alerts |
+| `history ID [--days]` | Show price history |
+| `detail ID` | Show product details with category |
+| `remove ID` | Remove product from monitoring |
+| `categories` | List all categories with statistics |
+| `category NAME` | Show products in a specific category |
+| `compare NAME` | Compare prices by category across stores |
+| `search-category TERM` | Search categories by keyword |
+| `categorize [--all]` | Categorize products using AI |
 
 ## Alert Types
 
@@ -273,27 +478,12 @@ Generated reports include:
 
 Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 
-## CLI Commands Reference
-
-| Command | Description |
-|---------|-------------|
-| `init-db` | Initialize database schema |
-| `migrate` | Run migration for multi-store support |
-| `add URL PRICE` | Add product to monitor |
-| `list [--store]` | List all products (optionally filtered) |
-| `check` | Check prices and show alerts |
-| `update` | Update all product prices |
-| `alerts` | Show triggered alerts |
-| `history ID [--days]` | Show price history |
-| `detail ID` | Show product details |
-| `remove ID` | Remove product from monitoring |
-
 ## Limitations
 
 - **Web Scraping**: This tool uses web scraping which may break if stores change page structure
 - **Rate Limiting**: Built-in delays to avoid being blocked
 - **Brazil Only**: Currently optimized for Brazilian store websites
-- **No Product Matching**: Same product in different stores are tracked separately (different SKUs)
+- **API Costs**: Product categorization uses Anthropic API (pay-per-use)
 
 ## Future Improvements
 
@@ -301,8 +491,8 @@ Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 - [ ] Browser automation (Selenium) for more reliable scraping
 - [ ] Price prediction based on historical data
 - [ ] Web dashboard interface
-- [ ] AI-powered product matching across stores
 - [ ] Support for more supermarkets (Big, Nacional, etc.)
+- [ ] Batch categorization optimization
 
 ## License
 

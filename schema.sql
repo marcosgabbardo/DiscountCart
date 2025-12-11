@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS products (
     title VARCHAR(500),
     image_url VARCHAR(500),
     store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari',
+    category VARCHAR(100),
     target_price DECIMAL(10, 2) NOT NULL,
     current_price DECIMAL(10, 2),
     lowest_price DECIMAL(10, 2),
@@ -26,7 +27,8 @@ CREATE TABLE IF NOT EXISTS products (
     UNIQUE KEY idx_store_asin (store, asin),
     INDEX idx_asin (asin),
     INDEX idx_is_active (is_active),
-    INDEX idx_store (store)
+    INDEX idx_store (store),
+    INDEX idx_category (category)
 );
 
 -- Table: price_history
@@ -68,6 +70,7 @@ SELECT
     p.asin,
     p.title,
     p.store,
+    p.category,
     p.current_price,
     p.target_price,
     p.lowest_price,

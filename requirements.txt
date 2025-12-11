@@ -1,4 +1,4 @@
-# Zaffari Price Monitor Dependencies
+# DiscountCart Price Monitor Dependencies
 
 # Database
 mysql-connector-python>=8.0.0
@@ -19,3 +19,6 @@ schedule>=1.2.0
 
 # Excel report generation
 openpyxl>=3.1.0
+
+# AI categorization
+anthropic>=0.39.0

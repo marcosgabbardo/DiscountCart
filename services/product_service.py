@@ -66,10 +66,20 @@ class ProductService:
                 self._update_current_price(existing.id, scraped.price)
             return self.get_product_by_id(existing.id)
 
+        # Try to categorize the product using Anthropic API
+        category = None
+        if scraped.title:
+            try:
+                from .category_service import CategoryService
+                category_service = CategoryService()
+                category = category_service.categorize_product(scraped.title)
+            except Exception as e:
+                print(f"Aviso: Não foi possível categorizar o produto: {e}")
+
         # Insert new product
         query = """
-            INSERT INTO products (asin, url, title, image_url, store, target_price, current_price, lowest_price, highest_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO products (asin, url, title, image_url, store, category, target_price, current_price, lowest_price, highest_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             scraped.sku,  # Using SKU in asin column
@@ -77,6 +87,7 @@ class ProductService:
             scraped.title,
             scraped.image_url,
             store.value,
+            category,
             float(target_price),
             float(scraped.price) if scraped.price else None,
             float(scraped.price) if scraped.price else None,

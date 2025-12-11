@@ -89,12 +89,12 @@ class CarrefourScraper:
                 }
             )
 
-            print(f"[DEBUG] Regionalization API: status={response.status_code}, CEP={self.cep}")
-            print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
+            # print(f"[DEBUG] Regionalization API: status={response.status_code}, CEP={self.cep}")
+            # print(f"[DEBUG] Response cookies: {dict(response.cookies)}")
 
             return response.status_code == 200
-        except Exception as e:
-            print(f"[DEBUG] Regionalization API error: {e}")
+        except Exception:
+            # print(f"[DEBUG] Regionalization API error: {e}")
             return False
 
     def extract_sku(self, url: str) -> Optional[str]:
@@ -255,7 +255,7 @@ class CarrefourScraper:
         self.session.headers['User-Agent'] = self._get_random_user_agent()
 
         # Debug: show cookies being sent
-        print(f"[DEBUG] Session cookies: {dict(self.session.cookies)}")
+        # print(f"[DEBUG] Session cookies: {dict(self.session.cookies)}")
 
         try:
             response = self.session.get(

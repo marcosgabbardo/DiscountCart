@@ -104,13 +104,24 @@ class ProductService:
         self.db.execute_query(query, (float(target_price), product_id), fetch=False)
 
     def _update_current_price(self, product_id: int, price: Decimal) -> None:
-        """Update current price."""
+        """Update current price and adjust lowest/highest if needed."""
+        # Get current product to compare prices
+        product = self.get_product_by_id(product_id)
+        if not product:
+            return
+
+        new_lowest = min(product.lowest_price or price, price)
+        new_highest = max(product.highest_price or price, price)
+
         query = """
             UPDATE products
-            SET current_price = %s
+            SET current_price = %s, lowest_price = %s, highest_price = %s
             WHERE id = %s
         """
-        self.db.execute_query(query, (float(price), product_id), fetch=False)
+        self.db.execute_query(query, (float(price), float(new_lowest), float(new_highest), product_id), fetch=False)
+
+        # Record in price history
+        self._record_price_history(product_id, price, True)
 
     def get_product_by_id(self, product_id: int) -> Optional[Product]:
         """Get product by ID."""

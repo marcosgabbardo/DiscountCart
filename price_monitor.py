@@ -26,7 +26,7 @@ from tabulate import tabulate
 from config import settings
 from database import get_db, Store
 from database.models import AlertType
-from services import ProductService, AlertService
+from services import ProductService, AlertService, CategoryService
 from utils import parse_price, format_currency, truncate_string, validate_product_url
 
 
@@ -73,6 +73,7 @@ def add_product(url: str, target_price_str: str):
         print(f"Loja: {product.store.display_name}")
         print(f"Título: {product.title}")
         print(f"SKU: {product.asin}")
+        print(f"Categoria: {product.category or 'Não categorizado'}")
         print(f"Preço Atual: {format_currency(product.current_price)}")
         print(f"Preço Alvo: {format_currency(product.target_price)}")
 
@@ -376,6 +377,7 @@ def show_product_detail(product_id: int):
         print(f"ID:           {product.id}")
         print(f"Loja:         {product.store.display_name}")
         print(f"SKU:          {product.asin}")
+        print(f"Categoria:    {product.category or 'Não categorizado'}")
         print(f"URL:          {product.url}")
         print(f"\n💰 Preços:")
         print(f"   Atual:     {format_currency(product.current_price)}")
@@ -402,36 +404,216 @@ def show_product_detail(product_id: int):
         sys.exit(1)
 
 
-def run_migration():
-    """Run database migration to add store column."""
-    print("Executando migração do banco de dados...")
-    db = get_db()
+def list_categories():
+    """List all categories with product counts and price ranges."""
+    try:
+        service = CategoryService()
+        categories = service.get_all_categories()
 
-    # First, check if store column already exists
-    check_column_query = """
-        SELECT COUNT(*) as cnt FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-        AND table_name = 'products'
-        AND column_name = 'store'
-    """
+        if not categories:
+            print("Nenhuma categoria encontrada.")
+            print("Execute 'categorize' para categorizar produtos existentes.")
+            return
+
+        print(f"\n📁 Categorias de Produtos ({len(categories)})")
+        print("-" * 80)
+
+        table_data = []
+        for cat in categories:
+            table_data.append([
+                cat['category'],
+                cat['product_count'],
+                format_currency(Decimal(str(cat['min_price']))) if cat['min_price'] else '-',
+                format_currency(Decimal(str(cat['max_price']))) if cat['max_price'] else '-',
+                format_currency(Decimal(str(cat['avg_price']))) if cat['avg_price'] else '-',
+            ])
+
+        headers = ["Categoria", "Qtd", "Menor Preço", "Maior Preço", "Média"]
+        print(tabulate(table_data, headers=headers, tablefmt="simple"))
+        print("-" * 80)
+
+    except Exception as e:
+        print(f"Erro ao listar categorias: {e}")
+        sys.exit(1)
+
+
+def show_category(category_name: str):
+    """Show all products in a specific category."""
+    try:
+        service = CategoryService()
+        products = service.get_products_by_category(category_name)
+
+        if not products:
+            print(f"Nenhum produto encontrado na categoria '{category_name}'.")
+            print("\nCategorias disponíveis:")
+            for cat in service.get_available_categories():
+                print(f"  - {cat}")
+            return
+
+        print(f"\n📁 Categoria: {category_name} ({len(products)} produtos)")
+        print("-" * 90)
+
+        table_data = []
+        for p in products:
+            store_abbr = "🟢" if p['store'] == 'zaffari' else "🔵"
+            table_data.append([
+                p['id'],
+                store_abbr,
+                truncate_string(p['title'], 40),
+                format_currency(Decimal(str(p['current_price']))) if p['current_price'] else '-',
+                format_currency(Decimal(str(p['lowest_price']))) if p['lowest_price'] else '-',
+            ])
+
+        headers = ["ID", "Loja", "Produto", "Preço Atual", "Menor Preço"]
+        print(tabulate(table_data, headers=headers, tablefmt="simple"))
+        print("-" * 90)
+
+        # Show cheapest
+        cheapest = service.get_cheapest_by_category(category_name)
+        if cheapest:
+            store_name = Store(cheapest['store']).display_name
+            print(f"\n💰 Mais barato: {truncate_string(cheapest['title'], 50)}")
+            print(f"   Loja: {store_name}")
+            print(f"   Preço: {format_currency(Decimal(str(cheapest['current_price'])))}")
+
+    except Exception as e:
+        print(f"Erro ao mostrar categoria: {e}")
+        sys.exit(1)
+
+
+def compare_category(category_name: str):
+    """Compare prices of products in a category across stores."""
+    try:
+        service = CategoryService()
+        products = service.compare_prices_by_category(category_name)
+
+        if not products:
+            print(f"Nenhum produto encontrado na categoria '{category_name}'.")
+            return
+
+        print(f"\n📊 Comparação de Preços: {category_name}")
+        print("-" * 100)
+
+        table_data = []
+        for i, p in enumerate(products):
+            store_abbr = "🟢" if p['store'] == 'zaffari' else "🔵"
+            rank = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else "  "))
+
+            table_data.append([
+                rank,
+                store_abbr,
+                truncate_string(p['title'], 35),
+                format_currency(Decimal(str(p['current_price']))),
+                format_currency(Decimal(str(p['lowest_price']))) if p['lowest_price'] else '-',
+                format_currency(Decimal(str(p['avg_30d']))) if p['avg_30d'] else '-',
+            ])
+
+        headers = ["Rank", "Loja", "Produto", "Atual", "Mínimo", "Média 30d"]
+        print("Legenda: 🟢 Zaffari | 🔵 Carrefour")
+        print(tabulate(table_data, headers=headers, tablefmt="simple"))
+        print("-" * 100)
+
+        if len(products) >= 2:
+            diff = Decimal(str(products[-1]['current_price'])) - Decimal(str(products[0]['current_price']))
+            if diff > 0:
+                print(f"\n💡 Economia potencial escolhendo o mais barato: {format_currency(diff)}")
+
+    except Exception as e:
+        print(f"Erro ao comparar categoria: {e}")
+        sys.exit(1)
+
+
+def categorize_products():
+    """Categorize all products without a category."""
+    print("Categorizando produtos sem categoria...")
+    print("Isso pode demorar um pouco.\n")
 
     try:
-        result = db.execute_query(check_column_query)
-        column_exists = result[0]['cnt'] > 0 if result else False
+        service = CategoryService()
+        categorized = service.categorize_all_uncategorized()
 
-        if not column_exists:
+        if not categorized:
+            print("Todos os produtos já estão categorizados!")
+            return
+
+        print(f"\n✅ {len(categorized)} produto(s) categorizado(s)")
+
+        # Show summary by category
+        categories = {}
+        for item in categorized:
+            cat = item['category']
+            if cat not in categories:
+                categories[cat] = 0
+            categories[cat] += 1
+
+        print("\nResumo por categoria:")
+        for cat, count in sorted(categories.items()):
+            print(f"  {cat}: {count} produto(s)")
+
+    except Exception as e:
+        print(f"Erro ao categorizar produtos: {e}")
+        sys.exit(1)
+
+
+def run_migration():
+    """Run database migrations."""
+    print("Executando migrações do banco de dados...")
+    db = get_db()
+
+    try:
+        # Migration 1: Add store column
+        check_store_query = """
+            SELECT COUNT(*) as cnt FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+            AND table_name = 'products'
+            AND column_name = 'store'
+        """
+        result = db.execute_query(check_store_query)
+        store_exists = result[0]['cnt'] > 0 if result else False
+
+        if not store_exists:
             print("Adicionando coluna 'store' à tabela products...")
-            add_column_query = """
+            add_store_query = """
                 ALTER TABLE products
                 ADD COLUMN store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari'
                 AFTER image_url
             """
-            db.execute_query(add_column_query, fetch=False)
+            db.execute_query(add_store_query, fetch=False)
             print("✅ Coluna 'store' adicionada!")
         else:
             print("✅ Coluna 'store' já existe.")
 
-        # Update the view
+        # Migration 2: Add category column
+        check_category_query = """
+            SELECT COUNT(*) as cnt FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+            AND table_name = 'products'
+            AND column_name = 'category'
+        """
+        result = db.execute_query(check_category_query)
+        category_exists = result[0]['cnt'] > 0 if result else False
+
+        if not category_exists:
+            print("Adicionando coluna 'category' à tabela products...")
+            add_category_query = """
+                ALTER TABLE products
+                ADD COLUMN category VARCHAR(100) NULL
+                AFTER store
+            """
+            db.execute_query(add_category_query, fetch=False)
+            print("✅ Coluna 'category' adicionada!")
+
+            # Add index for category
+            print("Criando índice para categoria...")
+            try:
+                db.execute_query("CREATE INDEX idx_category ON products(category)", fetch=False)
+                print("✅ Índice criado!")
+            except Exception:
+                print("✅ Índice já existe ou não pôde ser criado.")
+        else:
+            print("✅ Coluna 'category' já existe.")
+
+        # Update the view to include category
         print("Atualizando view product_summary...")
         view_query = """
             CREATE OR REPLACE VIEW product_summary AS
@@ -440,6 +622,7 @@ def run_migration():
                 p.asin,
                 p.title,
                 p.store,
+                p.category,
                 p.current_price,
                 p.target_price,
                 p.lowest_price,
@@ -459,13 +642,17 @@ def run_migration():
         """
         db.execute_query(view_query, fetch=False)
 
-        print("\n✅ Migração executada com sucesso!")
-        print("Agora você pode adicionar produtos do Carrefour também.")
+        print("\n✅ Migrações executadas com sucesso!")
+        print("\nFuncionalidades disponíveis:")
+        print("  - Produtos do Zaffari e Carrefour")
+        print("  - Categorização automática de produtos com IA")
+        print("\nPara categorizar produtos existentes, execute:")
+        print("  python price_monitor.py categorize")
 
     except Exception as e:
         print(f"❌ Erro na migração: {e}")
         print("\nSe o erro persistir, execute manualmente:")
-        print("  mysql -u USER -p DATABASE < migrations/001_add_store_column.sql")
+        print("  mysql -u USER -p DATABASE < migrations/002_add_category_column.sql")
         sys.exit(1)
 
 
@@ -487,6 +674,10 @@ Exemplos:
   %(prog)s history 1
   %(prog)s detail 1
   %(prog)s remove 1
+  %(prog)s categories
+  %(prog)s category Leite
+  %(prog)s compare Leite
+  %(prog)s categorize
   %(prog)s init-db
   %(prog)s migrate
         """
@@ -532,6 +723,20 @@ Exemplos:
     remove_parser = subparsers.add_parser('remove', help='Remover produto do monitoramento')
     remove_parser.add_argument('product_id', type=int, help='ID do produto')
 
+    # categories command
+    subparsers.add_parser('categories', help='Listar todas as categorias de produtos')
+
+    # category command
+    category_parser = subparsers.add_parser('category', help='Mostrar produtos de uma categoria')
+    category_parser.add_argument('category_name', help='Nome da categoria (ex: Leite, Queijo)')
+
+    # compare command
+    compare_parser = subparsers.add_parser('compare', help='Comparar preços por categoria')
+    compare_parser.add_argument('category_name', help='Nome da categoria para comparar')
+
+    # categorize command
+    subparsers.add_parser('categorize', help='Categorizar produtos sem categoria usando IA')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -559,6 +764,14 @@ Exemplos:
         show_product_detail(args.product_id)
     elif args.command == 'remove':
         remove_product(args.product_id)
+    elif args.command == 'categories':
+        list_categories()
+    elif args.command == 'category':
+        show_category(args.category_name)
+    elif args.command == 'compare':
+        compare_category(args.category_name)
+    elif args.command == 'categorize':
+        categorize_products()
 
 
 if __name__ == '__main__':

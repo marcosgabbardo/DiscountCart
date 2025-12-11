@@ -51,6 +51,7 @@ class Product:
     title: Optional[str] = None
     image_url: Optional[str] = None
     store: Store = Store.ZAFFARI
+    category: Optional[str] = None
     target_price: Decimal = Decimal('0.00')
     current_price: Optional[Decimal] = None
     lowest_price: Optional[Decimal] = None
@@ -72,6 +73,7 @@ class Product:
             title=data.get('title'),
             image_url=data.get('image_url'),
             store=store,
+            category=data.get('category'),
             target_price=Decimal(str(data.get('target_price', 0))),
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,
@@ -90,6 +92,7 @@ class Product:
             'title': self.title,
             'image_url': self.image_url,
             'store': self.store.value if isinstance(self.store, Store) else self.store,
+            'category': self.category,
             'target_price': float(self.target_price),
             'current_price': float(self.current_price) if self.current_price else None,
             'lowest_price': float(self.lowest_price) if self.lowest_price else None,
@@ -183,6 +186,7 @@ class ProductSummary:
     asin: str
     title: Optional[str]
     store: Store
+    category: Optional[str]
     current_price: Optional[Decimal]
     target_price: Decimal
     lowest_price: Optional[Decimal]
@@ -205,6 +209,7 @@ class ProductSummary:
             asin=data.get('asin', ''),
             title=data.get('title'),
             store=store,
+            category=data.get('category'),
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
             target_price=Decimal(str(data.get('target_price', 0))),
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,

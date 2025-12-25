@@ -99,11 +99,17 @@ def list_products(store_filter: str = None):
             print("Adicione um produto com: python price_monitor.py add <url>")
             return
 
+        # Sort products alphabetically by title
+        products = sorted(products, key=lambda p: (p.title or "").lower())
+
         # Prepare table data
         table_data = []
         for p in products:
             # Store emoji/abbreviation
             store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+
+            # Category (truncated)
+            category = truncate_string(p.category, 20) if p.category else "-"
 
             # Price vs lowest
             status = ""
@@ -117,22 +123,23 @@ def list_products(store_filter: str = None):
             table_data.append([
                 p.id,
                 store_abbr,
-                truncate_string(p.title, 35),
+                truncate_string(p.title, 30),
+                category,
                 format_currency(p.current_price),
                 format_currency(p.lowest_price),
                 format_currency(p.highest_price),
                 status,
             ])
 
-        headers = ["ID", "Loja", "Produto", "Atual", "Mínimo", "Máximo", "Status"]
+        headers = ["ID", "Loja", "Produto", "Categoria", "Atual", "Mínimo", "Máximo", "Status"]
         title = f"📦 Produtos Monitorados ({len(products)})"
         if store:
             title += f" - {store.display_name}"
         print(f"\n{title}")
         print("Legenda: 🟢 Zaffari | 🔵 Carrefour")
-        print("-" * 100)
+        print("-" * 120)
         print(tabulate(table_data, headers=headers, tablefmt="simple"))
-        print("-" * 100)
+        print("-" * 120)
 
     except Exception as e:
         print(f"Erro ao listar produtos: {e}")

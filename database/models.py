@@ -136,10 +136,10 @@ class PriceHistory:
 
 @dataclass
 class Alert:
-    """Represents a price alert."""
+    """Represents a price alert based on standard deviation."""
     id: Optional[int] = None
     product_id: int = 0
-    alert_type: AlertType = AlertType.TARGET_REACHED
+    alert_type: AlertType = AlertType.STD_DEV_1_30D
     threshold_value: Optional[Decimal] = None
     threshold_percentage: Optional[Decimal] = None
     is_triggered: bool = False
@@ -152,7 +152,7 @@ class Alert:
     @classmethod
     def from_dict(cls, data: dict) -> 'Alert':
         """Create Alert from dictionary."""
-        alert_type = data.get('alert_type', 'target_reached')
+        alert_type = data.get('alert_type', 'std_dev_1_30d')
         if isinstance(alert_type, str):
             alert_type = AlertType(alert_type)
 

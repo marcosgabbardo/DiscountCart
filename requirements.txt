@@ -22,3 +22,6 @@ openpyxl>=3.1.0
 
 # AI categorization
 anthropic>=0.39.0
+
+# Terminal charts
+plotext>=5.2.0

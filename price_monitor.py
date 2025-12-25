@@ -261,6 +261,17 @@ def show_history(product_id: int, days: int = 30):
         sys.exit(1)
 
 
+def show_chart(product_id: int, days: int = 30):
+    """Show price chart for a product in the terminal."""
+    try:
+        service = ProductService()
+        service.plot_price_history(product_id, days)
+
+    except Exception as e:
+        print(f"Erro ao mostrar gráfico: {e}")
+        sys.exit(1)
+
+
 def remove_product(product_id: int):
     """Remove a product from monitoring."""
     try:
@@ -726,6 +737,11 @@ Exemplos:
     history_parser.add_argument('product_id', type=int, help='ID do produto')
     history_parser.add_argument('--days', type=int, default=30, help='Número de dias (padrão: 30)')
 
+    # chart command
+    chart_parser = subparsers.add_parser('chart', help='Exibir gráfico de preços no terminal')
+    chart_parser.add_argument('product_id', type=int, help='ID do produto')
+    chart_parser.add_argument('--days', type=int, default=30, help='Número de dias (padrão: 30)')
+
     # detail command
     detail_parser = subparsers.add_parser('detail', help='Mostrar detalhes do produto')
     detail_parser.add_argument('product_id', type=int, help='ID do produto')
@@ -777,6 +793,8 @@ Exemplos:
         show_alerts()
     elif args.command == 'history':
         show_history(args.product_id, args.days)
+    elif args.command == 'chart':
+        show_chart(args.product_id, args.days)
     elif args.command == 'detail':
         show_product_detail(args.product_id)
     elif args.command == 'remove':

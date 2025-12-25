@@ -410,3 +410,104 @@ class ProductService:
         self.db.execute_query(query, (product_id,), fetch=False)
         return True
 
+    def plot_price_history(self, product_id: int, days: int = 30) -> bool:
+        """
+        Plot price history chart in the terminal.
+
+        Args:
+            product_id: ID of the product
+            days: Number of days to show (default: 30)
+
+        Returns:
+            True if chart was displayed, False if no data
+        """
+        try:
+            import plotext as plt
+        except ImportError:
+            print("Erro: plotext não instalado. Execute: pip install plotext")
+            return False
+
+        product = self.get_product_by_id(product_id)
+        if not product:
+            print(f"Produto com ID {product_id} não encontrado.")
+            return False
+
+        history = self.get_price_history(product_id, days)
+        if not history:
+            print("Sem histórico de preços disponível.")
+            return False
+
+        # Sort by date (oldest first)
+        history = sorted(history, key=lambda h: h.recorded_at)
+
+        # Extract dates and prices
+        dates = [h.recorded_at.strftime("%d/%m") for h in history]
+        prices = [float(h.price) for h in history]
+
+        # Calculate statistics
+        avg_price = sum(prices) / len(prices)
+        min_price = min(prices)
+        max_price = max(prices)
+        current = prices[-1] if prices else 0
+
+        # Get std deviation info
+        stats = self.get_std_deviation(product_id, days)
+        threshold_1 = None
+        threshold_2 = None
+        if stats:
+            avg, std_dev = stats
+            threshold_1 = float(avg - std_dev)
+            threshold_2 = float(avg - (std_dev * 2))
+
+        # Clear and setup plot
+        plt.clear_figure()
+        plt.theme('dark')
+
+        # Title
+        title = f"{product.title[:50]}..." if product.title and len(product.title) > 50 else product.title
+        plt.title(f"📈 Histórico de Preços: {title}")
+
+        # Plot price line
+        plt.plot(dates, prices, label="Preço", marker="braille", color="cyan")
+
+        # Plot average line
+        plt.hline(avg_price, color="yellow")
+
+        # Plot std deviation thresholds if available
+        if threshold_1:
+            plt.hline(threshold_1, color="green")
+        if threshold_2:
+            plt.hline(threshold_2, color="red")
+
+        # Labels
+        plt.xlabel("Data")
+        plt.ylabel("Preço (R$)")
+
+        # Show the plot
+        plt.show()
+
+        # Print legend below chart
+        print(f"\n{'─' * 60}")
+        print(f"📊 Estatísticas ({days} dias) - {len(history)} registros")
+        print(f"{'─' * 60}")
+        print(f"  Atual:    R$ {current:.2f}")
+        print(f"  Média:    R$ {avg_price:.2f} ━━ (linha amarela)")
+        print(f"  Mínimo:   R$ {min_price:.2f}")
+        print(f"  Máximo:   R$ {max_price:.2f}")
+        if threshold_1:
+            print(f"  1 DP:     R$ {threshold_1:.2f} ━━ (linha verde)")
+        if threshold_2:
+            print(f"  2 DP:     R$ {threshold_2:.2f} ━━ (linha vermelha)")
+
+        # Status indicator
+        if current <= (threshold_2 or 0):
+            print(f"\n  🔥 OFERTA EXCEPCIONAL! Preço abaixo de 2 desvios padrão!")
+        elif current <= (threshold_1 or 0):
+            print(f"\n  ✅ Bom preço! Abaixo de 1 desvio padrão.")
+        elif current <= min_price:
+            print(f"\n  📉 Preço no mínimo histórico!")
+
+        print(f"{'─' * 60}")
+
+        return True
+

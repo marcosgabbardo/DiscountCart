@@ -28,13 +28,12 @@ class ProductService:
         """Detect which store the URL belongs to."""
         return Store.from_url(url)
 
-    def add_product(self, url: str, target_price: Decimal) -> Product:
+    def add_product(self, url: str) -> Product:
         """
         Add a new product to monitor.
 
         Args:
             url: Product URL (Zaffari or Carrefour)
-            target_price: Target price for alerts
 
         Returns:
             Created Product object
@@ -60,8 +59,8 @@ class ProductService:
         # Check if product already exists (use SKU + store as identifier)
         existing = self.get_product_by_sku(scraped.sku, store)
         if existing:
-            # Update target price, current price and reactivate
-            self._update_product_target(existing.id, target_price)
+            # Reactivate and update current price
+            self._reactivate_product(existing.id)
             if scraped.price:
                 self._update_current_price(existing.id, scraped.price)
             return self.get_product_by_id(existing.id)
@@ -78,8 +77,8 @@ class ProductService:
 
         # Insert new product
         query = """
-            INSERT INTO products (asin, url, title, image_url, store, category, target_price, current_price, lowest_price, highest_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO products (asin, url, title, image_url, store, category, current_price, lowest_price, highest_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         params = (
             scraped.sku,  # Using SKU in asin column
@@ -88,7 +87,6 @@ class ProductService:
             scraped.image_url,
             store.value,
             category,
-            float(target_price),
             float(scraped.price) if scraped.price else None,
             float(scraped.price) if scraped.price else None,
             float(scraped.price) if scraped.price else None,
@@ -105,14 +103,14 @@ class ProductService:
         # Fetch and return the created product
         return self.get_product_by_id(product_id)
 
-    def _update_product_target(self, product_id: int, target_price: Decimal) -> None:
-        """Update product target price and reactivate."""
+    def _reactivate_product(self, product_id: int) -> None:
+        """Reactivate a product."""
         query = """
             UPDATE products
-            SET target_price = %s, is_active = TRUE
+            SET is_active = TRUE
             WHERE id = %s
         """
-        self.db.execute_query(query, (float(target_price), product_id), fetch=False)
+        self.db.execute_query(query, (product_id,), fetch=False)
 
     def _update_current_price(self, product_id: int, price: Decimal) -> None:
         """Update current price and adjust lowest/highest if needed."""
@@ -304,9 +302,13 @@ class ProductService:
 
         return (Decimal(str(round(avg, 2))), Decimal(str(round(std_dev, 2))))
 
-    def get_products_below_std_deviation(self, days: int = 30) -> List[dict]:
+    def get_products_below_std_deviation(self, days: int = 30, num_std_dev: int = 1) -> List[dict]:
         """
-        Get products where current price is below (avg - 1 std deviation).
+        Get products where current price is below (avg - N std deviations).
+
+        Args:
+            days: Number of days for price history (30, 90, or 180)
+            num_std_dev: Number of standard deviations below average (1 or 2)
         """
         products = self.get_all_products(active_only=True)
         results = []
@@ -320,7 +322,7 @@ class ProductService:
                 continue
 
             avg_price, std_dev = stats
-            threshold = avg_price - std_dev
+            threshold = avg_price - (std_dev * num_std_dev)
 
             if product.current_price <= threshold:
                 results.append({
@@ -328,10 +330,67 @@ class ProductService:
                     'avg_price': avg_price,
                     'std_deviation': std_dev,
                     'threshold': threshold,
+                    'num_std_dev': num_std_dev,
+                    'days': days,
                     'diff': float(threshold - product.current_price)
                 })
 
         return results
+
+    def get_all_std_deviation_alerts(self) -> dict:
+        """
+        Get all products that are below standard deviation thresholds.
+        Checks for 1 and 2 std deviations for 30, 90, and 180 day periods.
+
+        Returns:
+            Dictionary with keys for each alert type containing list of products
+        """
+        periods = [30, 90, 180]
+        std_levels = [1, 2]
+
+        results = {}
+
+        for days in periods:
+            for num_std in std_levels:
+                key = f"std_dev_{num_std}_{days}d"
+                results[key] = self.get_products_below_std_deviation(days, num_std)
+
+        return results
+
+    def get_product_std_analysis(self, product_id: int) -> Optional[dict]:
+        """
+        Get complete standard deviation analysis for a product.
+
+        Returns analysis for 30, 90, and 180 day periods.
+        """
+        product = self.get_product_by_id(product_id)
+        if not product or not product.current_price:
+            return None
+
+        analysis = {
+            'product': product,
+            'periods': {}
+        }
+
+        for days in [30, 90, 180]:
+            stats = self.get_std_deviation(product.id, days)
+            if stats:
+                avg_price, std_dev = stats
+                threshold_1 = avg_price - std_dev
+                threshold_2 = avg_price - (std_dev * 2)
+
+                analysis['periods'][days] = {
+                    'avg_price': avg_price,
+                    'std_deviation': std_dev,
+                    'threshold_1_std': threshold_1,
+                    'threshold_2_std': threshold_2,
+                    'is_below_1_std': product.current_price <= threshold_1,
+                    'is_below_2_std': product.current_price <= threshold_2,
+                }
+            else:
+                analysis['periods'][days] = None
+
+        return analysis
 
     def deactivate_product(self, product_id: int) -> bool:
         """Deactivate a product (stop monitoring)."""
@@ -351,42 +410,3 @@ class ProductService:
         self.db.execute_query(query, (product_id,), fetch=False)
         return True
 
-    def get_products_at_target(self) -> List[Product]:
-        """Get products that have reached or are below target price."""
-        query = """
-            SELECT * FROM products
-            WHERE is_active = TRUE
-            AND current_price IS NOT NULL
-            AND current_price <= target_price
-            ORDER BY (target_price - current_price) DESC
-        """
-        results = self.db.execute_query(query)
-        return [Product.from_dict(row) for row in results]
-
-    def get_products_below_average(self, days: int = 7, threshold_percent: float = 10.0) -> List[dict]:
-        """Get products that are below their average price by threshold percentage."""
-        query = """
-            SELECT
-                p.*,
-                (SELECT AVG(ph.price) FROM price_history ph
-                 WHERE ph.product_id = p.id
-                 AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL %s DAY)) as avg_price
-            FROM products p
-            WHERE p.is_active = TRUE
-            AND p.current_price IS NOT NULL
-            HAVING avg_price IS NOT NULL
-            AND p.current_price < avg_price * (1 - %s / 100)
-            ORDER BY ((avg_price - p.current_price) / avg_price * 100) DESC
-        """
-        results = self.db.execute_query(query, (days, threshold_percent))
-
-        products_with_avg = []
-        for row in results:
-            product = Product.from_dict(row)
-            products_with_avg.append({
-                'product': product,
-                'avg_price': Decimal(str(row['avg_price'])),
-                'discount_percent': float((Decimal(str(row['avg_price'])) - product.current_price) / Decimal(str(row['avg_price'])) * 100)
-            })
-
-        return products_with_avg

@@ -440,8 +440,9 @@ class ProductService:
         # Sort by date (oldest first)
         history = sorted(history, key=lambda h: h.recorded_at)
 
-        # Extract dates and prices
-        dates = [h.recorded_at.strftime("%d/%m") for h in history]
+        # Extract dates and prices (use numeric indices for x-axis)
+        date_labels = [h.recorded_at.strftime("%d/%m") for h in history]
+        x_values = list(range(len(history)))
         prices = [float(h.price) for h in history]
 
         # Calculate statistics
@@ -467,8 +468,16 @@ class ProductService:
         title = f"{product.title[:50]}..." if product.title and len(product.title) > 50 else product.title
         plt.title(f"📈 Histórico de Preços: {title}")
 
-        # Plot price line
-        plt.plot(dates, prices, label="Preço", marker="braille", color="cyan")
+        # Plot price line using numeric x-axis
+        plt.plot(x_values, prices, label="Preço", marker="braille", color="cyan")
+
+        # Set custom x-axis tick labels (show subset to avoid crowding)
+        num_ticks = min(10, len(date_labels))
+        if num_ticks > 1:
+            step = max(1, len(date_labels) // num_ticks)
+            tick_indices = list(range(0, len(date_labels), step))
+            tick_labels = [date_labels[i] for i in tick_indices]
+            plt.xticks(tick_indices, tick_labels)
 
         # Plot average line
         plt.hline(avg_price, color="yellow")

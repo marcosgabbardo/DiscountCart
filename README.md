@@ -1,24 +1,36 @@
 # DiscountCart - Price Monitor
 
-A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (Brazil). Get terminal alerts when prices reach your target, compare prices between stores, and find the cheapest products by category using AI-powered categorization.
+A price monitoring tool for **Zaffari** and **Carrefour** supermarket products (Brazil). Get alerts when prices drop significantly below average using standard deviation analysis, compare prices between stores, and find the cheapest products by category using AI-powered categorization.
 
 ## Features
 
 - **Multi-Store Support**: Monitor products from Zaffari and Carrefour
 - **Add Products**: Monitor any product via URL (auto-detects store)
-- **Set Target Price**: Define the price you want to pay
 - **AI-Powered Categorization**: Automatic product categorization using Anthropic Claude API
 - **Price Comparison by Category**: Compare prices of similar products across stores (e.g., all "Leite UHT Integral")
 - **Price History**: Track price variations over time
-- **Smart Alerts**: Get notified when:
-  - Price reaches your target
-  - Price drops below 7/30 day average
-  - Price falls 1 standard deviation below 30-day average
-  - New lowest price detected
-- **Statistics**: View average, minimum, and maximum prices
+- **Standard Deviation Alerts**: Get notified when prices are significantly below average:
+  - **1 Standard Deviation**: Good deals (price below avg - 1σ)
+  - **2 Standard Deviations**: Exceptional deals (price below avg - 2σ)
+  - **Multiple Periods**: Analyzed for 30, 90, and 180 days
+- **Statistics**: View average, minimum, maximum prices and standard deviation analysis
 - **Daily Scheduler**: Automatic updates at 8:00 AM with Excel reports
-- **Excel Reports**: Generated reports with price changes, store info, and alert status
+- **Excel Reports**: Generated reports with price changes, store info, and std deviation alerts
 - **Filter by Store**: List products from a specific store
+
+## Standard Deviation Alerts
+
+The system uses statistical analysis to identify truly exceptional prices:
+
+| Alert Level | Meaning | Interpretation |
+|-------------|---------|----------------|
+| 🔥 2 Std Dev | Price is 2+ standard deviations below average | Exceptional deal - rarely this low |
+| ✅ 1 Std Dev | Price is 1+ standard deviation below average | Good deal - below typical price |
+
+Alerts are calculated for three time periods:
+- **30 days**: Recent price behavior
+- **90 days**: Medium-term trend
+- **180 days**: Long-term historical comparison
 
 ## Product Categorization
 
@@ -108,7 +120,6 @@ REQUEST_TIMEOUT=30
 
 # Alert Configuration
 CHECK_INTERVAL_MINUTES=60
-PRICE_DROP_THRESHOLD_PERCENT=10
 
 # Regional Configuration (for Carrefour pricing)
 CEP=90420-010
@@ -131,12 +142,12 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
 **Zaffari:**
 ```bash
-python price_monitor.py add "https://www.zaffari.com.br/produto-123/p" "R$80,99"
+python price_monitor.py add "https://www.zaffari.com.br/produto-123/p"
 ```
 
 **Carrefour:**
 ```bash
-python price_monitor.py add "https://mercado.carrefour.com.br/produto-456/p" "R$75,00"
+python price_monitor.py add "https://mercado.carrefour.com.br/produto-456/p"
 ```
 
 The store is automatically detected from the URL, and the product is automatically categorized using AI.
@@ -151,14 +162,10 @@ Título: Leite Integral Piracanjuba 1L
 SKU: 12345
 Categoria: Leite UHT Integral
 Preço Atual: R$ 5,49
-Preço Alvo: R$ 5,00
-```
 
-Accepted price formats:
-- `R$80,99`
-- `80,99`
-- `80.99`
-- `R$ 1.234,56`
+📢 Produto será monitorado para alertas de desvio padrão.
+   Use 'check' para ver alertas quando o preço estiver abaixo da média.
+```
 
 ### List All Monitored Products
 
@@ -170,12 +177,12 @@ Output:
 ```
 📦 Produtos Monitorados (4)
 Legenda: 🟢 Zaffari | 🔵 Carrefour
-------------------------------------------------------------------------------------------
-ID   Loja   Produto                              Atual          Alvo           Diferença   Status
-1    🟢     Presunto Cozido Fatiado Sadia...     R$ 6,99        R$ 6,55        R$ 0,44     👀
-2    🟢     Queijo Mussarela President...        R$ 12,90       R$ 10,99       R$ 1,91     👀
-3    🔵     Arroz Branco Carrefour 5kg           R$ 24,90       R$ 22,00       R$ 2,90     👀
-4    🔵     Leite Integral Piracanjuba...        R$ 5,49        R$ 5,49        R$ 0,00     ✅
+----------------------------------------------------------------------------------------------------
+ID   Loja   Produto                              Atual          Mínimo         Máximo         Status
+1    🟢     Presunto Cozido Fatiado Sadia...     R$ 6,99        R$ 6,55        R$ 7,49        +6.7%
+2    🟢     Queijo Mussarela President...        R$ 12,90       R$ 10,99       R$ 14,50       +17.4%
+3    🔵     Arroz Branco Carrefour 5kg           R$ 24,90       R$ 22,00       R$ 28,90       +13.2%
+4    🔵     Leite Integral Piracanjuba...        R$ 5,49        R$ 5,49        R$ 6,29        📉 Mínimo
 ```
 
 ### Filter by Store
@@ -187,6 +194,64 @@ python price_monitor.py list --store zaffari
 # Only Carrefour products
 python price_monitor.py list --store carrefour
 ```
+
+---
+
+## Alert Commands
+
+### Check Standard Deviation Alerts
+
+```bash
+python price_monitor.py check
+```
+
+Output:
+```
+Verificando preços e alertas de desvio padrão...
+
+======================================================================
+📊 RESUMO DE ALERTAS POR DESVIO PADRÃO
+======================================================================
+
+🔥 OFERTAS EXCEPCIONAIS (2 Desvios Padrão)
+----------------------------------------------------------------------
+
+  📅 Período: 30d
+    • Leite Integral Piracanjuba 1L...
+      R$ 4,99 (limite: R$ 5,45)
+
+  📅 Período: 90d - Nenhum produto
+
+  📅 Período: 180d - Nenhum produto
+
+
+💰 BOAS OFERTAS (1 Desvio Padrão)
+----------------------------------------------------------------------
+
+  📅 Período: 30d
+    • Arroz Branco Carrefour 5kg...
+      R$ 22,90 (limite: R$ 24,50)
+    • Coração de Frango Sadia 1kg...
+      R$ 12,99 (limite: R$ 14,20)
+
+  📅 Período: 90d
+    • Leite Integral Piracanjuba 1L...
+      R$ 4,99 (limite: R$ 5,60)
+
+  📅 Período: 180d - Nenhum produto
+
+======================================================================
+
+🎯 1 oferta(s) excepcional(is) encontrada(s)!
+```
+
+### View All Alerts
+
+```bash
+python price_monitor.py alerts
+```
+
+Shows the complete standard deviation alert summary organized by period and severity.
 
 ---
 
@@ -312,24 +377,55 @@ Resumo por categoria:
 
 ## Other Commands
 
-### Check Prices and Alerts
-
-```bash
-python price_monitor.py check
-```
-
 ### Update All Prices
 
 ```bash
 python price_monitor.py update
 ```
 
-Fetches current prices from all stores for all monitored products.
+Fetches current prices from all stores for all monitored products and shows updated alerts.
 
 ### View Price History
 
 ```bash
 python price_monitor.py history 1 --days 30
+```
+
+Output includes standard deviation analysis:
+```
+📊 Histórico de Preços: Leite Integral Piracanjuba 1L
+--------------------------------------------------
+
+Estatísticas (últimos 30 dias):
+   Média:   R$ 5,35
+   Mínimo:  R$ 4,99
+   Máximo:  R$ 5,89
+   Registros: 28
+
+📉 Análise de Desvio Padrão:
+
+   30 dias:
+      Média: R$ 5,35
+      Desvio Padrão: R$ 0,28
+      Limite 1 DP: R$ 5,07
+      Limite 2 DP: R$ 4,79
+      ⚡ ABAIXO DE 2 DESVIOS PADRÃO!
+
+   90 dias:
+      Média: R$ 5,50
+      Desvio Padrão: R$ 0,35
+      Limite 1 DP: R$ 5,15
+      Limite 2 DP: R$ 4,80
+      ✅ Abaixo de 1 desvio padrão
+
+   180 dias:
+      (dados insuficientes)
+
+Preços recentes:
+Data                  Preço
+2024-01-15 08:00      R$ 4,99
+2024-01-14 08:00      R$ 5,29
+...
 ```
 
 ### View Product Details
@@ -338,31 +434,36 @@ python price_monitor.py history 1 --days 30
 python price_monitor.py detail 1
 ```
 
-Output includes category:
+Output includes category and standard deviation analysis:
 ```
 ============================================================
-📦 Arroz Branco Tipo 1 Carrefour 5kg
+📦 Leite Integral Piracanjuba 1L
 ============================================================
-ID:           3
+ID:           12
 Loja:         Carrefour
-SKU:          3043
-Categoria:    Arroz Branco
-URL:          https://mercado.carrefour.com.br/arroz-branco-tipo-1-carrefour-5-kg-3043/p
+SKU:          45678
+Categoria:    Leite UHT Integral
+URL:          https://mercado.carrefour.com.br/leite-integral-piracanjuba-1l-45678/p
 
 💰 Preços:
-   Atual:     R$ 24,90
-   Alvo:      R$ 22,00
-   Mínimo:    R$ 23,50
-   Máximo:    R$ 26,90
-   Média (7d):  R$ 24,50
-   Média (30d): R$ 24,80
-...
-```
+   Atual:     R$ 4,99
+   Mínimo:    R$ 4,79
+   Máximo:    R$ 6,29
 
-### View Triggered Alerts
+📊 Médias:
+   Média (7d):   R$ 5,15
+   Média (30d):  R$ 5,35
+   Média (90d):  R$ 5,50
+   Média (180d): R$ 5,65
 
-```bash
-python price_monitor.py alerts
+📉 Análise de Desvio Padrão:
+   30d: Limite 1DP=R$ 5,07 | 2DP=R$ 4,79 🔥 EXCEPCIONAL!
+   90d: Limite 1DP=R$ 5,15 | 2DP=R$ 4,80 ✅ Bom preço
+   180d: Limite 1DP=R$ 5,30 | 2DP=R$ 4,95
+
+📅 Criado: 2024-01-01 10:30:00
+📅 Atualizado: 2024-01-15 08:00:00
+============================================================
 ```
 
 ### Remove a Product
@@ -379,7 +480,7 @@ If you're upgrading from a previous version:
 python price_monitor.py migrate
 ```
 
-This adds the `store` and `category` columns to existing products.
+This updates the database schema for the new standard deviation alert system.
 
 ## Scheduler
 
@@ -399,9 +500,8 @@ python scheduler.py --now
 
 This will:
 1. Update all product prices (from both stores)
-2. Check for products at target price
-3. Check for products below standard deviation threshold
-4. Generate an Excel report with all price changes and alerts
+2. Analyze all products for standard deviation alerts
+3. Generate an Excel report with all price changes and alerts
 
 ### Using Cron (Linux/Mac)
 
@@ -427,28 +527,29 @@ python C:\path\to\DiscountCart\scheduler.py --now
 
 The application uses 3 main tables:
 
-- **products**: Monitored products with URLs, store, category, and target prices
+- **products**: Monitored products with URLs, store, category, and price data
 - **price_history**: Historical price records
-- **alerts**: Alert configurations and status
+- **alerts**: Alert configurations based on standard deviation
 
 Key fields in `products`:
 - `store`: ENUM('zaffari', 'carrefour') - identifies the source store
 - `category`: VARCHAR(100) - AI-assigned product category
 - `asin`: Product SKU (unique per store)
+- `current_price`, `lowest_price`, `highest_price`: Price tracking
 
 ## CLI Commands Reference
 
 | Command | Description |
 |---------|-------------|
 | `init-db` | Initialize database schema |
-| `migrate` | Run migration for multi-store and category support |
-| `add URL PRICE` | Add product to monitor (auto-categorizes) |
+| `migrate` | Run migration for std deviation alert system |
+| `add URL` | Add product to monitor (auto-categorizes) |
 | `list [--store]` | List all products (optionally filtered by store) |
-| `check` | Check prices and show alerts |
+| `check` | Check prices and show std deviation alerts |
 | `update` | Update all product prices |
-| `alerts` | Show triggered alerts |
-| `history ID [--days]` | Show price history |
-| `detail ID` | Show product details with category |
+| `alerts` | Show standard deviation alerts summary |
+| `history ID [--days]` | Show price history with std deviation analysis |
+| `detail ID` | Show product details with std deviation thresholds |
 | `remove ID` | Remove product from monitoring |
 | `categories` | List all categories with statistics |
 | `category NAME` | Show products in a specific category |
@@ -460,10 +561,12 @@ Key fields in `products`:
 
 | Alert Type | Description |
 |------------|-------------|
-| `TARGET_REACHED` | Price reached or fell below target |
-| `PRICE_DROP` | Significant price drop detected |
-| `BELOW_AVERAGE` | Price below 7-day average |
-| `STD_DEVIATION` | Price 1 std deviation below 30-day average |
+| `STD_DEV_1_30D` | Price 1 std deviation below 30-day average |
+| `STD_DEV_1_90D` | Price 1 std deviation below 90-day average |
+| `STD_DEV_1_180D` | Price 1 std deviation below 180-day average |
+| `STD_DEV_2_30D` | Price 2 std deviations below 30-day average |
+| `STD_DEV_2_90D` | Price 2 std deviations below 90-day average |
+| `STD_DEV_2_180D` | Price 2 std deviations below 180-day average |
 
 ## Excel Reports
 
@@ -472,9 +575,10 @@ Generated reports include:
 - Product name
 - Previous and current price
 - Price variation percentage
-- Target price
-- 30-day average and standard deviation
-- Alert indicators (Target reached, Std deviation)
+- Average and standard deviation for 30, 90, and 180 days
+- Alert indicators:
+  - 🔥 Green highlight: 2 standard deviations (exceptional deal)
+  - ✅ Yellow highlight: 1 standard deviation (good deal)
 
 Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 
@@ -484,6 +588,7 @@ Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 - **Rate Limiting**: Built-in delays to avoid being blocked
 - **Brazil Only**: Currently optimized for Brazilian store websites
 - **API Costs**: Product categorization uses Anthropic API (pay-per-use)
+- **Historical Data**: Standard deviation alerts work better with more price history
 
 ## Future Improvements
 
@@ -493,6 +598,7 @@ Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 - [ ] Web dashboard interface
 - [ ] Support for more supermarkets (Big, Nacional, etc.)
 - [ ] Batch categorization optimization
+- [ ] Additional alert indicators (percentile, proximity to minimum, etc.)
 
 ## License
 

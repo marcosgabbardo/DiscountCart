@@ -55,9 +55,14 @@ def add_product(url: str):
 
     try:
         service = ProductService()
-        product = service.add_product(url)
+        product, is_new = service.add_product(url)
 
-        print("\n✅ Produto adicionado com sucesso!")
+        if is_new:
+            print("\n✅ Produto adicionado com sucesso!")
+        else:
+            print("\n⚠️  Produto já existe no monitoramento!")
+            print("   Preço atualizado com valor atual.")
+
         print("-" * 50)
         print(f"ID: {product.id}")
         print(f"Loja: {product.store.display_name}")
@@ -66,8 +71,9 @@ def add_product(url: str):
         print(f"Categoria: {product.category or 'Não categorizado'}")
         print(f"Preço Atual: {format_currency(product.current_price)}")
 
-        print("\n📢 Produto será monitorado para alertas de desvio padrão.")
-        print("   Use 'check' para ver alertas quando o preço estiver abaixo da média.")
+        if is_new:
+            print("\n📢 Produto será monitorado para alertas de desvio padrão.")
+            print("   Use 'check' para ver alertas quando o preço estiver abaixo da média.")
 
     except Exception as e:
         print(f"\n❌ Erro ao adicionar produto: {e}")

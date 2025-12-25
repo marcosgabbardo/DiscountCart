@@ -28,7 +28,7 @@ class ProductService:
         """Detect which store the URL belongs to."""
         return Store.from_url(url)
 
-    def add_product(self, url: str) -> Product:
+    def add_product(self, url: str) -> tuple[Product, bool]:
         """
         Add a new product to monitor.
 
@@ -36,7 +36,7 @@ class ProductService:
             url: Product URL (Zaffari or Carrefour)
 
         Returns:
-            Created Product object
+            Tuple of (Product, is_new) where is_new indicates if product was newly created
         """
         # Detect store from URL
         store = self._detect_store(url)
@@ -63,7 +63,7 @@ class ProductService:
             self._reactivate_product(existing.id)
             if scraped.price:
                 self._update_current_price(existing.id, scraped.price)
-            return self.get_product_by_id(existing.id)
+            return (self.get_product_by_id(existing.id), False)  # Product already existed
 
         # Try to categorize the product using Anthropic API
         category = None
@@ -101,7 +101,7 @@ class ProductService:
             self._record_price_history(product_id, scraped.price, scraped.is_available)
 
         # Fetch and return the created product
-        return self.get_product_by_id(product_id)
+        return (self.get_product_by_id(product_id), True)  # New product created
 
     def _reactivate_product(self, product_id: int) -> None:
         """Reactivate a product."""

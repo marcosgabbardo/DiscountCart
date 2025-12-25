@@ -35,11 +35,15 @@ class Store(Enum):
 
 
 class AlertType(Enum):
-    """Types of price alerts."""
-    TARGET_REACHED = 'target_reached'
-    PRICE_DROP = 'price_drop'
-    BELOW_AVERAGE = 'below_average'
-    STD_DEVIATION = 'std_deviation'  # Alerta quando preço cai 1 desvio padrão
+    """Types of price alerts based on standard deviation."""
+    # 1 desvio padrão abaixo da média
+    STD_DEV_1_30D = 'std_dev_1_30d'    # 1 desvio padrão - 30 dias
+    STD_DEV_1_90D = 'std_dev_1_90d'    # 1 desvio padrão - 90 dias
+    STD_DEV_1_180D = 'std_dev_1_180d'  # 1 desvio padrão - 180 dias
+    # 2 desvios padrão abaixo da média (ou menor)
+    STD_DEV_2_30D = 'std_dev_2_30d'    # 2 desvios padrão - 30 dias
+    STD_DEV_2_90D = 'std_dev_2_90d'    # 2 desvios padrão - 90 dias
+    STD_DEV_2_180D = 'std_dev_2_180d'  # 2 desvios padrão - 180 dias
 
 
 @dataclass
@@ -52,7 +56,6 @@ class Product:
     image_url: Optional[str] = None
     store: Store = Store.ZAFFARI
     category: Optional[str] = None
-    target_price: Decimal = Decimal('0.00')
     current_price: Optional[Decimal] = None
     lowest_price: Optional[Decimal] = None
     highest_price: Optional[Decimal] = None
@@ -74,7 +77,6 @@ class Product:
             image_url=data.get('image_url'),
             store=store,
             category=data.get('category'),
-            target_price=Decimal(str(data.get('target_price', 0))),
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,
             highest_price=Decimal(str(data['highest_price'])) if data.get('highest_price') else None,
@@ -93,7 +95,6 @@ class Product:
             'image_url': self.image_url,
             'store': self.store.value if isinstance(self.store, Store) else self.store,
             'category': self.category,
-            'target_price': float(self.target_price),
             'current_price': float(self.current_price) if self.current_price else None,
             'lowest_price': float(self.lowest_price) if self.lowest_price else None,
             'highest_price': float(self.highest_price) if self.highest_price else None,
@@ -104,21 +105,12 @@ class Product:
 
     @property
     def price_status(self) -> str:
-        """Get current price status relative to target."""
+        """Get current price status."""
         if self.current_price is None:
             return 'UNKNOWN'
-        if self.current_price <= self.target_price:
-            return 'TARGET_REACHED'
-        if self.lowest_price and self.current_price < self.lowest_price:
-            return 'NEW_LOW'
+        if self.lowest_price and self.current_price <= self.lowest_price:
+            return 'AT_LOWEST'
         return 'MONITORING'
-
-    @property
-    def discount_from_target(self) -> Optional[float]:
-        """Calculate percentage discount needed to reach target."""
-        if self.current_price and self.current_price > 0:
-            return float((self.current_price - self.target_price) / self.current_price * 100)
-        return None
 
 
 @dataclass
@@ -188,11 +180,12 @@ class ProductSummary:
     store: Store
     category: Optional[str]
     current_price: Optional[Decimal]
-    target_price: Decimal
     lowest_price: Optional[Decimal]
     highest_price: Optional[Decimal]
     avg_price_7days: Optional[Decimal]
     avg_price_30days: Optional[Decimal]
+    avg_price_90days: Optional[Decimal]
+    avg_price_180days: Optional[Decimal]
     total_price_records: int
     status: str
     is_active: bool
@@ -211,11 +204,12 @@ class ProductSummary:
             store=store,
             category=data.get('category'),
             current_price=Decimal(str(data['current_price'])) if data.get('current_price') else None,
-            target_price=Decimal(str(data.get('target_price', 0))),
             lowest_price=Decimal(str(data['lowest_price'])) if data.get('lowest_price') else None,
             highest_price=Decimal(str(data['highest_price'])) if data.get('highest_price') else None,
             avg_price_7days=Decimal(str(data['avg_price_7days'])) if data.get('avg_price_7days') else None,
             avg_price_30days=Decimal(str(data['avg_price_30days'])) if data.get('avg_price_30days') else None,
+            avg_price_90days=Decimal(str(data['avg_price_90days'])) if data.get('avg_price_90days') else None,
+            avg_price_180days=Decimal(str(data['avg_price_180days'])) if data.get('avg_price_180days') else None,
             total_price_records=data.get('total_price_records', 0),
             status=data.get('status', 'MONITORING'),
             is_active=data.get('is_active', True),

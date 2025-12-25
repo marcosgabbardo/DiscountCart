@@ -1,5 +1,5 @@
 """
-Alert service for managing price alerts and notifications.
+Alert service for managing price alerts based on standard deviation.
 """
 
 from decimal import Decimal
@@ -7,14 +7,25 @@ from typing import Optional, List
 
 from database import get_db, Alert, Product
 from database.models import AlertType
-from config import settings
+from services.product_service import ProductService
 
 
 class AlertService:
-    """Service for alert management and notifications."""
+    """Service for alert management based on standard deviation analysis."""
+
+    # Mapping of AlertType to (days, num_std_dev)
+    ALERT_CONFIG = {
+        AlertType.STD_DEV_1_30D: (30, 1),
+        AlertType.STD_DEV_1_90D: (90, 1),
+        AlertType.STD_DEV_1_180D: (180, 1),
+        AlertType.STD_DEV_2_30D: (30, 2),
+        AlertType.STD_DEV_2_90D: (90, 2),
+        AlertType.STD_DEV_2_180D: (180, 2),
+    }
 
     def __init__(self):
         self.db = get_db()
+        self.product_service = ProductService()
 
     def create_alert(
         self,
@@ -78,8 +89,7 @@ class AlertService:
                 p.asin,
                 p.title,
                 p.url,
-                p.current_price,
-                p.target_price
+                p.current_price
             FROM alerts a
             JOIN products p ON a.product_id = p.id
             WHERE a.is_triggered = TRUE AND a.is_active = TRUE
@@ -96,7 +106,6 @@ class AlertService:
                     'title': row['title'],
                     'url': row['url'],
                     'current_price': Decimal(str(row['current_price'])) if row['current_price'] else None,
-                    'target_price': Decimal(str(row['target_price'])),
                 }
             })
 
@@ -125,102 +134,105 @@ class AlertService:
         query = "UPDATE alerts SET is_active = FALSE WHERE id = %s"
         self.db.execute_query(query, (alert_id,), fetch=False)
 
-    def check_alerts(self, products: List[Product]) -> List[dict]:
+    def check_std_deviation_alerts(self) -> dict:
         """
-        Check all alerts against current product prices.
+        Check all products for standard deviation alerts.
 
-        Returns:
-            List of newly triggered alerts with product info
+        Returns a dictionary with alerts organized by type.
         """
-        newly_triggered = []
+        all_alerts = self.product_service.get_all_std_deviation_alerts()
 
-        for product in products:
-            if not product.current_price:
-                continue
-
-            alerts = self.get_alerts_for_product(product.id)
-
-            for alert in alerts:
-                if alert.is_triggered:
-                    continue
-
-                should_trigger = False
-
-                if alert.alert_type == AlertType.TARGET_REACHED:
-                    # Check if price is at or below target
-                    if product.current_price <= product.target_price:
-                        should_trigger = True
-
-                elif alert.alert_type == AlertType.PRICE_DROP:
-                    # Check if price dropped by threshold percentage
-                    if alert.threshold_percentage and product.highest_price:
-                        threshold = product.highest_price * (1 - alert.threshold_percentage / 100)
-                        if product.current_price <= threshold:
-                            should_trigger = True
-
-                elif alert.alert_type == AlertType.BELOW_AVERAGE:
-                    # This requires calculating average - handled separately
-                    pass
-
-                if should_trigger:
-                    self.trigger_alert(alert.id, product.current_price)
-                    newly_triggered.append({
-                        'alert': alert,
-                        'product': product,
-                        'triggered_price': product.current_price,
-                    })
-
-        return newly_triggered
-
-    def check_target_alerts(self) -> List[dict]:
-        """Check which products have reached their target price."""
-        query = """
-            SELECT
-                p.*,
-                a.id as alert_id,
-                a.alert_type,
-                a.is_triggered as alert_triggered
-            FROM products p
-            LEFT JOIN alerts a ON p.id = a.product_id AND a.alert_type = 'target_reached' AND a.is_active = TRUE
-            WHERE p.is_active = TRUE
-            AND p.current_price IS NOT NULL
-            AND p.current_price <= p.target_price
-            ORDER BY (p.target_price - p.current_price) DESC
-        """
-        results = self.db.execute_query(query)
-
-        alerts = []
-        for row in results:
-            product = Product.from_dict(row)
-            savings = product.target_price - product.current_price
-
-            alert_info = {
-                'product': product,
-                'savings': savings,
-                'alert_id': row.get('alert_id'),
-                'is_new': row.get('alert_triggered') is False if row.get('alert_id') else True,
+        result = {
+            '1_std_dev': {
+                '30d': all_alerts.get('std_dev_1_30d', []),
+                '90d': all_alerts.get('std_dev_1_90d', []),
+                '180d': all_alerts.get('std_dev_1_180d', []),
+            },
+            '2_std_dev': {
+                '30d': all_alerts.get('std_dev_2_30d', []),
+                '90d': all_alerts.get('std_dev_2_90d', []),
+                '180d': all_alerts.get('std_dev_2_180d', []),
             }
+        }
 
-            # Trigger alert if not already triggered
-            if row.get('alert_id') and not row.get('alert_triggered'):
-                self.trigger_alert(row['alert_id'], product.current_price)
+        return result
 
-            alerts.append(alert_info)
+    def get_best_deals(self) -> List[dict]:
+        """
+        Get products that are at 2 standard deviations below average.
+        These are the best deals available.
+        """
+        # Products at 2 std dev for any period are exceptional deals
+        best_deals = []
 
-        return alerts
+        for days in [30, 90, 180]:
+            deals = self.product_service.get_products_below_std_deviation(days, 2)
+            for deal in deals:
+                # Avoid duplicates
+                product_ids = [d['product'].id for d in best_deals]
+                if deal['product'].id not in product_ids:
+                    best_deals.append(deal)
 
-    def print_alert(self, product: Product, message: str) -> None:
+        # Sort by biggest discount
+        best_deals.sort(key=lambda x: x['diff'], reverse=True)
+
+        return best_deals
+
+    def print_alert(self, product: Product, message: str, stats: dict = None) -> None:
         """Print alert notification to console."""
         print("\n" + "=" * 60)
         print("ALERTA DE PRECO!")
         print("=" * 60)
         print(f"Produto: {product.title[:50]}..." if product.title and len(product.title) > 50 else f"Produto: {product.title}")
-        print(f"ASIN: {product.asin}")
+        print(f"SKU: {product.asin}")
+        print(f"Loja: {product.store.display_name}")
         print(f"Preco Atual: R$ {product.current_price:.2f}")
-        print(f"Preco Alvo: R$ {product.target_price:.2f}")
-        if product.current_price and product.target_price:
-            savings = product.target_price - product.current_price
-            print(f"Economia: R$ {savings:.2f}")
-        print(f"URL: {product.url}")
+
+        if stats:
+            print(f"\nEstatísticas ({stats.get('days', 30)} dias):")
+            print(f"  Média: R$ {stats.get('avg_price', 0):.2f}")
+            print(f"  Desvio Padrão: R$ {stats.get('std_deviation', 0):.2f}")
+            print(f"  Limite ({stats.get('num_std_dev', 1)} DP): R$ {stats.get('threshold', 0):.2f}")
+            print(f"  Economia: R$ {stats.get('diff', 0):.2f}")
+
+        print(f"\nURL: {product.url}")
         print(message)
         print("=" * 60 + "\n")
+
+    def print_std_deviation_summary(self) -> None:
+        """Print a summary of all standard deviation alerts."""
+        alerts = self.check_std_deviation_alerts()
+
+        print("\n" + "=" * 70)
+        print("📊 RESUMO DE ALERTAS POR DESVIO PADRÃO")
+        print("=" * 70)
+
+        # 2 std dev alerts (best deals)
+        print("\n🔥 OFERTAS EXCEPCIONAIS (2 Desvios Padrão)")
+        print("-" * 70)
+        for period in ['30d', '90d', '180d']:
+            items = alerts['2_std_dev'][period]
+            if items:
+                print(f"\n  📅 Período: {period}")
+                for item in items:
+                    p = item['product']
+                    print(f"    • {p.title[:40]}...")
+                    print(f"      R$ {p.current_price:.2f} (limite: R$ {item['threshold']:.2f})")
+            else:
+                print(f"\n  📅 Período: {period} - Nenhum produto")
+
+        # 1 std dev alerts (good deals)
+        print("\n\n💰 BOAS OFERTAS (1 Desvio Padrão)")
+        print("-" * 70)
+        for period in ['30d', '90d', '180d']:
+            items = alerts['1_std_dev'][period]
+            if items:
+                print(f"\n  📅 Período: {period}")
+                for item in items:
+                    p = item['product']
+                    print(f"    • {p.title[:40]}...")
+                    print(f"      R$ {p.current_price:.2f} (limite: R$ {item['threshold']:.2f})")
+            else:
+                print(f"\n  📅 Período: {period} - Nenhum produto")
+
+        print("\n" + "=" * 70)

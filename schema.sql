@@ -1,5 +1,6 @@
 -- DiscountCart Price Monitor Database Schema
 -- Execute this script to create the database and tables
+-- Sistema de alertas baseado em desvio padrão (1DP e 2DP) para períodos de 30, 90 e 180 dias
 
 CREATE DATABASE IF NOT EXISTS amazon_price_monitor
     CHARACTER SET utf8mb4
@@ -8,7 +9,7 @@ CREATE DATABASE IF NOT EXISTS amazon_price_monitor
 USE amazon_price_monitor;
 
 -- Table: products
--- Stores the monitored products and their target prices
+-- Stores the monitored products
 CREATE TABLE IF NOT EXISTS products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     asin VARCHAR(20) NOT NULL,
@@ -17,7 +18,6 @@ CREATE TABLE IF NOT EXISTS products (
     image_url VARCHAR(500),
     store ENUM('zaffari', 'carrefour') NOT NULL DEFAULT 'zaffari',
     category VARCHAR(100),
-    target_price DECIMAL(10, 2) NOT NULL,
     current_price DECIMAL(10, 2),
     lowest_price DECIMAL(10, 2),
     highest_price DECIMAL(10, 2),
@@ -44,11 +44,18 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 
 -- Table: alerts
--- Stores alert configurations and their status
+-- Stores alert configurations based on standard deviation
 CREATE TABLE IF NOT EXISTS alerts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     product_id INT NOT NULL,
-    alert_type ENUM('target_reached', 'price_drop', 'below_average') NOT NULL,
+    alert_type ENUM(
+        'std_dev_1_30d',   -- 1 desvio padrão abaixo da média de 30 dias
+        'std_dev_1_90d',   -- 1 desvio padrão abaixo da média de 90 dias
+        'std_dev_1_180d',  -- 1 desvio padrão abaixo da média de 180 dias
+        'std_dev_2_30d',   -- 2 desvios padrão abaixo da média de 30 dias
+        'std_dev_2_90d',   -- 2 desvios padrão abaixo da média de 90 dias
+        'std_dev_2_180d'   -- 2 desvios padrão abaixo da média de 180 dias
+    ) NOT NULL,
     threshold_value DECIMAL(10, 2),
     threshold_percentage DECIMAL(5, 2),
     is_triggered BOOLEAN DEFAULT FALSE,
@@ -63,7 +70,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 -- View: product_summary
--- Provides a quick summary of products with their alert status
+-- Provides a quick summary of products with their statistics for multiple periods
 CREATE OR REPLACE VIEW product_summary AS
 SELECT
     p.id,
@@ -72,15 +79,15 @@ SELECT
     p.store,
     p.category,
     p.current_price,
-    p.target_price,
     p.lowest_price,
     p.highest_price,
     ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)), 2) AS avg_price_7days,
     ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)), 2) AS avg_price_30days,
+    ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)), 2) AS avg_price_90days,
+    ROUND((SELECT AVG(ph.price) FROM price_history ph WHERE ph.product_id = p.id AND ph.recorded_at >= DATE_SUB(NOW(), INTERVAL 180 DAY)), 2) AS avg_price_180days,
     (SELECT COUNT(*) FROM price_history ph WHERE ph.product_id = p.id) AS total_price_records,
     CASE
-        WHEN p.current_price <= p.target_price THEN 'TARGET_REACHED'
-        WHEN p.current_price < p.lowest_price THEN 'NEW_LOW'
+        WHEN p.current_price <= p.lowest_price THEN 'AT_LOWEST'
         ELSE 'MONITORING'
     END AS status,
     p.is_active,

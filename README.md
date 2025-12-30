@@ -32,6 +32,8 @@ Alerts are calculated for three time periods:
 - **90 days**: Medium-term trend
 - **180 days**: Long-term historical comparison
 
+> **Important**: Standard deviation calculations require a **minimum of 30 data points** (price records) to ensure statistical significance. Products with less historical data won't generate std deviation alerts.
+
 ## Product Categorization
 
 The AI categorization system creates **granular categories** that represent the generic product type (without brand), enabling direct price comparison between equivalent products from different stores/brands.
@@ -517,6 +519,109 @@ URL:          https://mercado.carrefour.com.br/leite-integral-piracanjuba-1l-456
 python price_monitor.py remove 1
 ```
 
+---
+
+## Analyze Command
+
+The `analyze` command provides advanced analysis of products based on various indicators. This is useful for finding buying opportunities using different metrics.
+
+### Available Indicators
+
+| Indicator | Description |
+|-----------|-------------|
+| `--min` | Products currently at their historical minimum price |
+| `--max` | Products currently at their historical maximum price |
+| `--below-avg` | Products priced below the period average |
+| `--above-avg` | Products priced above the period average |
+| `--drop` | Products that had a price drop in the last measurement |
+| `--rise` | Products that had a price increase in the last measurement |
+| `--std1` | Products below 1 standard deviation (requires 30+ records) |
+| `--std2` | Products below 2 standard deviations (requires 30+ records) |
+| `--volatile` | Products with high price volatility (coefficient of variation) |
+| `--stable` | Products with stable prices (low coefficient of variation) |
+| `--near-min` | Products within X% of their historical minimum |
+| `--score` | Opportunity ranking combining multiple factors |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--store`, `-s` | Filter by store (zaffari, carrefour) |
+| `--days`, `-d` | Analysis period in days (default: 30) |
+| `--threshold`, `-t` | Percentage threshold for some indicators |
+
+### Examples
+
+**Find products at historical minimum:**
+```bash
+python price_monitor.py analyze --min
+```
+
+Output:
+```
+📉 Produtos no PREÇO MÍNIMO histórico (3)
+------------------------------------------------------------------------------------------
+ID   Loja   Produto                                     Preço Atual (Mín)  Máximo
+12   🔵     Leite Integral Piracanjuba 1L               R$ 4,99            R$ 6,29
+5    🟢     Arroz Branco Tio João 5kg                   R$ 22,90           R$ 28,50
+8    🔵     Coração de Frango Sadia 1kg                 R$ 12,99           R$ 16,90
+------------------------------------------------------------------------------------------
+Legenda: 🟢 Zaffari | 🔵 Carrefour
+```
+
+**Find products below average (custom period):**
+```bash
+python price_monitor.py analyze --below-avg --days 60
+```
+
+**Find products with recent price drop:**
+```bash
+python price_monitor.py analyze --drop
+```
+
+Output:
+```
+📉 Produtos com QUEDA DE PREÇO recente (2)
+----------------------------------------------------------------------------------------------------
+ID   Loja   Produto                              Anterior       Atual          Queda
+12   🔵     Leite Integral Piracanjuba 1L        R$ 5,29        R$ 4,99        -5.7%
+3    🟢     Queijo Mussarela President           R$ 14,50       R$ 12,90       -11.0%
+----------------------------------------------------------------------------------------------------
+```
+
+**Find volatile products (filter by store):**
+```bash
+python price_monitor.py analyze --volatile --store zaffari --threshold 15
+```
+
+**View opportunity ranking:**
+```bash
+python price_monitor.py analyze --score
+```
+
+Output:
+```
+🏆 RANKING DE OPORTUNIDADES (15)
+--------------------------------------------------------------------------------------------------------------
+#    Loja   Produto                         Preço          Score     Fatores
+🥇   🔵     Leite Integral Piracanjuba...   R$ 4,99        95 pts    No mínimo histórico (+20pts), Abaixo de 2 DP (+10pts)
+🥈   🟢     Arroz Branco Tio João 5kg       R$ 22,90       75 pts    Próximo do mínimo (35pts), Abaixo da média 30d (+15pts)
+🥉   🔵     Coração de Frango Sadia 1kg     R$ 12,99       60 pts    No mínimo histórico (+20pts), Abaixo da média 30d (+15pts)
+ 4   🟢     Queijo Mussarela President       R$ 12,90       45 pts    Abaixo da média 30d (+15pts), Abaixo de 1 DP (+15pts)
+--------------------------------------------------------------------------------------------------------------
+
+Score máximo: 100 pontos
+```
+
+The opportunity score considers:
+- **Position in price range** (0-40 pts): How close to minimum vs maximum
+- **At minimum** (+20 pts): Currently at historical low
+- **Below 30d average** (+15 pts): Below the monthly average
+- **Below 1 std deviation** (+15 pts): Statistically good price
+- **Below 2 std deviations** (+10 pts): Exceptional statistical price
+
+---
+
 ### Run Database Migration
 
 If you're upgrading from a previous version:
@@ -593,6 +698,7 @@ Key fields in `products`:
 | `check` | Check prices and show std deviation alerts |
 | `update` | Update all product prices |
 | `alerts` | Show standard deviation alerts summary |
+| `analyze --INDICATOR` | Analyze products by indicator (see below) |
 | `history ID [--days]` | Show price history with std deviation analysis |
 | `chart ID [--days]` | View price chart in terminal with std deviation lines |
 | `detail ID` | Show product details with std deviation thresholds |
@@ -602,6 +708,23 @@ Key fields in `products`:
 | `compare NAME` | Compare prices by category across stores |
 | `search-category TERM` | Search categories by keyword |
 | `categorize [--all]` | Categorize products using AI |
+
+### Analyze Indicators
+
+| Indicator | Description |
+|-----------|-------------|
+| `--min` | Products at historical minimum price |
+| `--max` | Products at historical maximum price |
+| `--below-avg` | Products below period average |
+| `--above-avg` | Products above period average |
+| `--drop` | Products with recent price drop |
+| `--rise` | Products with recent price increase |
+| `--std1` | Products below 1 std deviation (30+ records) |
+| `--std2` | Products below 2 std deviations (30+ records) |
+| `--volatile` | High volatility products |
+| `--stable` | Stable price products |
+| `--near-min` | Products near historical minimum |
+| `--score` | Opportunity ranking (combines all factors) |
 
 ## Alert Types
 
@@ -644,7 +767,6 @@ Reports are saved as `relatorio_precos_YYYYMMDD_HHMMSS.xlsx`
 - [ ] Web dashboard interface
 - [ ] Support for more supermarkets (Big, Nacional, etc.)
 - [ ] Batch categorization optimization
-- [ ] Additional alert indicators (percentile, proximity to minimum, etc.)
 
 ## License
 

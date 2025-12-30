@@ -545,6 +545,380 @@ def search_category(search_term: str):
         sys.exit(1)
 
 
+def analyze_products(
+    indicator: str,
+    store_filter: str = None,
+    days: int = 30,
+    threshold: float = None
+):
+    """Analyze products based on different indicators."""
+    try:
+        service = ProductService()
+
+        # Parse store filter
+        store = None
+        if store_filter:
+            try:
+                store = Store(store_filter.lower())
+            except ValueError:
+                print(f"Erro: Loja '{store_filter}' não reconhecida.")
+                sys.exit(1)
+
+        store_label = f" ({store.display_name})" if store else ""
+
+        if indicator == 'min':
+            # Products at historical minimum
+            products = service.get_products_at_minimum(store)
+            print(f"\n📉 Produtos no PREÇO MÍNIMO histórico{store_label} ({len(products)})")
+            print("-" * 90)
+
+            if not products:
+                print("Nenhum produto encontrado no preço mínimo.")
+                return
+
+            table_data = []
+            for p in products:
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 40),
+                    format_currency(p.current_price),
+                    format_currency(p.highest_price),
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Preço Atual (Mín)", "Máximo"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'max':
+            # Products at historical maximum
+            products = service.get_products_at_maximum(store)
+            print(f"\n📈 Produtos no PREÇO MÁXIMO histórico{store_label} ({len(products)})")
+            print("-" * 90)
+
+            if not products:
+                print("Nenhum produto encontrado no preço máximo.")
+                return
+
+            table_data = []
+            for p in products:
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 40),
+                    format_currency(p.current_price),
+                    format_currency(p.lowest_price),
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Preço Atual (Máx)", "Mínimo"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'below-avg':
+            # Products below average
+            results = service.get_products_below_average(days, store)
+            print(f"\n💰 Produtos ABAIXO DA MÉDIA ({days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto abaixo da média.")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    f"-{item['diff_percent']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", f"Média {days}d", "Diferença"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'above-avg':
+            # Products above average
+            results = service.get_products_above_average(days, store)
+            print(f"\n⚠️  Produtos ACIMA DA MÉDIA ({days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto acima da média.")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    f"+{item['diff_percent']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", f"Média {days}d", "Diferença"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'drop':
+            # Products with recent price drop
+            results = service.get_products_with_price_drop(store)
+            print(f"\n📉 Produtos com QUEDA DE PREÇO recente{store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto com queda de preço recente.")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(item['previous_price']),
+                    format_currency(item['current_price']),
+                    f"-{item['drop_percent']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Anterior", "Atual", "Queda"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'rise':
+            # Products with recent price rise
+            results = service.get_products_with_price_rise(store)
+            print(f"\n📈 Produtos com AUMENTO DE PREÇO recente{store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto com aumento de preço recente.")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(item['previous_price']),
+                    format_currency(item['current_price']),
+                    f"+{item['rise_percent']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Anterior", "Atual", "Aumento"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'std1':
+            # Products below 1 std deviation
+            results = service.get_products_below_std_deviation(days, 1)
+            # Filter by store if needed
+            if store:
+                results = [r for r in results if r['product'].store == store]
+
+            print(f"\n✅ Produtos abaixo de 1 DESVIO PADRÃO ({days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto abaixo de 1 desvio padrão.")
+                print("(Requer mínimo de 30 registros de histórico)")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 30),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    format_currency(item['threshold']),
+                    f"R$ {item['diff']:.2f}",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", "Média", "Limite 1DP", "Economia"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'std2':
+            # Products below 2 std deviations
+            results = service.get_products_below_std_deviation(days, 2)
+            # Filter by store if needed
+            if store:
+                results = [r for r in results if r['product'].store == store]
+
+            print(f"\n🔥 Produtos abaixo de 2 DESVIOS PADRÃO ({days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto abaixo de 2 desvios padrão.")
+                print("(Requer mínimo de 30 registros de histórico)")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 30),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    format_currency(item['threshold']),
+                    f"R$ {item['diff']:.2f}",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", "Média", "Limite 2DP", "Economia"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'volatile':
+            # Volatile products
+            thresh = threshold if threshold else 10.0
+            results = service.get_volatile_products(days, thresh, store)
+            print(f"\n⚡ Produtos VOLÁTEIS (CV >= {thresh}%, {days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto com alta volatilidade.")
+                print("(Requer mínimo de 30 registros de histórico)")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    f"{item['coefficient_variation']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", "Média", "Coef. Var."]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'stable':
+            # Stable products
+            thresh = threshold if threshold else 5.0
+            results = service.get_stable_products(days, thresh, store)
+            print(f"\n🔒 Produtos ESTÁVEIS (CV < {thresh}%, {days}d){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto com preço estável.")
+                print("(Requer mínimo de 30 registros de histórico)")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 35),
+                    format_currency(p.current_price),
+                    format_currency(item['avg_price']),
+                    f"{item['coefficient_variation']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", "Média", "Coef. Var."]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'near-min':
+            # Products near minimum
+            thresh = threshold if threshold else 5.0
+            results = service.get_near_minimum(thresh, store)
+            print(f"\n🎯 Produtos PRÓXIMOS DO MÍNIMO (até {thresh}%){store_label} ({len(results)})")
+            print("-" * 100)
+
+            if not results:
+                print("Nenhum produto próximo do mínimo (que não esteja no mínimo).")
+                return
+
+            table_data = []
+            for item in results:
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                table_data.append([
+                    p.id,
+                    store_abbr,
+                    truncate_string(p.title, 40),
+                    format_currency(p.current_price),
+                    format_currency(item['lowest_price']),
+                    f"+{item['diff_percent']:.1f}%",
+                ])
+
+            headers = ["ID", "Loja", "Produto", "Atual", "Mínimo", "Diferença"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+
+        elif indicator == 'score':
+            # Opportunity score
+            results = service.get_opportunity_score(store)
+            print(f"\n🏆 RANKING DE OPORTUNIDADES{store_label} ({len(results)})")
+            print("-" * 110)
+
+            if not results:
+                print("Nenhum produto com pontuação.")
+                return
+
+            table_data = []
+            for i, item in enumerate(results[:20]):  # Top 20
+                p = item['product']
+                store_abbr = "🟢" if p.store == Store.ZAFFARI else "🔵"
+                rank = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else f"{i+1:2d}"))
+                factors_str = ", ".join(item['factors'][:2]) if item['factors'] else "-"
+                table_data.append([
+                    rank,
+                    store_abbr,
+                    truncate_string(p.title, 30),
+                    format_currency(p.current_price),
+                    f"{item['score']:.0f} pts",
+                    truncate_string(factors_str, 35),
+                ])
+
+            headers = ["#", "Loja", "Produto", "Preço", "Score", "Fatores"]
+            print(tabulate(table_data, headers=headers, tablefmt="simple"))
+            print("\nScore máximo: 100 pontos")
+
+        else:
+            print(f"Indicador '{indicator}' não reconhecido.")
+            print("\nIndicadores disponíveis:")
+            print("  --min        Produtos no preço mínimo histórico")
+            print("  --max        Produtos no preço máximo histórico")
+            print("  --below-avg  Produtos abaixo da média")
+            print("  --above-avg  Produtos acima da média")
+            print("  --drop       Produtos com queda de preço recente")
+            print("  --rise       Produtos com aumento de preço recente")
+            print("  --std1       Produtos abaixo de 1 desvio padrão")
+            print("  --std2       Produtos abaixo de 2 desvios padrão")
+            print("  --volatile   Produtos com alta volatilidade")
+            print("  --stable     Produtos com preço estável")
+            print("  --near-min   Produtos próximos do mínimo")
+            print("  --score      Ranking de oportunidades")
+            sys.exit(1)
+
+        print("-" * 90)
+        print("Legenda: 🟢 Zaffari | 🔵 Carrefour")
+
+    except Exception as e:
+        print(f"Erro ao analisar produtos: {e}")
+        sys.exit(1)
+
+
 def run_migration():
     """Run database migrations."""
     print("Executando migrações do banco de dados...")
@@ -770,6 +1144,51 @@ Exemplos:
     search_cat_parser = subparsers.add_parser('search-category', help='Buscar categorias por termo')
     search_cat_parser.add_argument('search_term', help='Termo para buscar nas categorias')
 
+    # analyze command
+    analyze_parser = subparsers.add_parser('analyze', help='Analisar produtos por indicadores',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Indicadores disponíveis:
+  --min        Produtos no preço mínimo histórico
+  --max        Produtos no preço máximo histórico
+  --below-avg  Produtos abaixo da média do período
+  --above-avg  Produtos acima da média do período
+  --drop       Produtos com queda de preço recente
+  --rise       Produtos com aumento de preço recente
+  --std1       Produtos abaixo de 1 desvio padrão (requer 30+ registros)
+  --std2       Produtos abaixo de 2 desvios padrão (requer 30+ registros)
+  --volatile   Produtos com alta volatilidade de preço
+  --stable     Produtos com preço estável
+  --near-min   Produtos próximos do mínimo histórico
+  --score      Ranking de oportunidades de compra
+
+Exemplos:
+  %(prog)s --min
+  %(prog)s --below-avg --days 60
+  %(prog)s --std1 --store zaffari
+  %(prog)s --volatile --threshold 15
+  %(prog)s --score
+        """)
+    analyze_group = analyze_parser.add_mutually_exclusive_group(required=True)
+    analyze_group.add_argument('--min', action='store_true', help='Produtos no preço mínimo histórico')
+    analyze_group.add_argument('--max', action='store_true', help='Produtos no preço máximo histórico')
+    analyze_group.add_argument('--below-avg', action='store_true', help='Produtos abaixo da média')
+    analyze_group.add_argument('--above-avg', action='store_true', help='Produtos acima da média')
+    analyze_group.add_argument('--drop', action='store_true', help='Produtos com queda de preço recente')
+    analyze_group.add_argument('--rise', action='store_true', help='Produtos com aumento de preço recente')
+    analyze_group.add_argument('--std1', action='store_true', help='Produtos abaixo de 1 desvio padrão')
+    analyze_group.add_argument('--std2', action='store_true', help='Produtos abaixo de 2 desvios padrão')
+    analyze_group.add_argument('--volatile', action='store_true', help='Produtos com alta volatilidade')
+    analyze_group.add_argument('--stable', action='store_true', help='Produtos com preço estável')
+    analyze_group.add_argument('--near-min', action='store_true', help='Produtos próximos do mínimo')
+    analyze_group.add_argument('--score', action='store_true', help='Ranking de oportunidades')
+    analyze_parser.add_argument('--store', '-s', choices=['zaffari', 'carrefour'],
+                                help='Filtrar por loja')
+    analyze_parser.add_argument('--days', '-d', type=int, default=30,
+                                help='Período em dias para análise (padrão: 30)')
+    analyze_parser.add_argument('--threshold', '-t', type=float,
+                                help='Limite percentual para alguns indicadores')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -809,6 +1228,16 @@ Exemplos:
         categorize_products(recategorize_all=args.all)
     elif args.command == 'search-category':
         search_category(args.search_term)
+    elif args.command == 'analyze':
+        # Determine which indicator was selected
+        indicators = ['min', 'max', 'below_avg', 'above_avg', 'drop', 'rise',
+                      'std1', 'std2', 'volatile', 'stable', 'near_min', 'score']
+        indicator = None
+        for ind in indicators:
+            if getattr(args, ind.replace('-', '_'), False):
+                indicator = ind.replace('_', '-')
+                break
+        analyze_products(indicator, args.store, args.days, args.threshold)
 
 
 if __name__ == '__main__':

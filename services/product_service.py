@@ -290,9 +290,11 @@ class ProductService:
         """
         Calculate average and standard deviation for the last N days.
         Returns: (avg_price, std_deviation) or None
+
+        Requires at least 30 data points for statistical significance.
         """
         history = self.get_price_history(product_id, days)
-        if len(history) < 2:
+        if len(history) < 30:
             return None
 
         prices = [float(h.price) for h in history]

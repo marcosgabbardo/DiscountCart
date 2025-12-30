@@ -394,6 +394,265 @@ class ProductService:
 
         return analysis
 
+    # ==================== ANALYSIS METHODS ====================
+
+    def get_products_at_minimum(self, store: Optional[Store] = None) -> List[Product]:
+        """Get products where current price equals the historical minimum."""
+        products = self.get_all_products(active_only=True, store=store)
+        return [p for p in products if p.current_price and p.lowest_price and p.current_price <= p.lowest_price]
+
+    def get_products_at_maximum(self, store: Optional[Store] = None) -> List[Product]:
+        """Get products where current price equals the historical maximum."""
+        products = self.get_all_products(active_only=True, store=store)
+        return [p for p in products if p.current_price and p.highest_price and p.current_price >= p.highest_price]
+
+    def get_products_below_average(self, days: int = 30, store: Optional[Store] = None) -> List[dict]:
+        """Get products where current price is below the average for the period."""
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            if not product.current_price:
+                continue
+
+            avg_price = self.get_average_price(product.id, days)
+            if avg_price and product.current_price < avg_price:
+                diff_percent = float((avg_price - product.current_price) / avg_price * 100)
+                results.append({
+                    'product': product,
+                    'avg_price': avg_price,
+                    'diff_percent': diff_percent,
+                    'days': days
+                })
+
+        # Sort by biggest discount
+        results.sort(key=lambda x: x['diff_percent'], reverse=True)
+        return results
+
+    def get_products_above_average(self, days: int = 30, store: Optional[Store] = None) -> List[dict]:
+        """Get products where current price is above the average for the period."""
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            if not product.current_price:
+                continue
+
+            avg_price = self.get_average_price(product.id, days)
+            if avg_price and product.current_price > avg_price:
+                diff_percent = float((product.current_price - avg_price) / avg_price * 100)
+                results.append({
+                    'product': product,
+                    'avg_price': avg_price,
+                    'diff_percent': diff_percent,
+                    'days': days
+                })
+
+        # Sort by biggest increase
+        results.sort(key=lambda x: x['diff_percent'], reverse=True)
+        return results
+
+    def get_products_with_price_drop(self, store: Optional[Store] = None) -> List[dict]:
+        """Get products where the last price is lower than the previous one."""
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            history = self.get_price_history(product.id, days=7)
+            if len(history) < 2:
+                continue
+
+            # History is sorted DESC, so [0] is most recent, [1] is previous
+            current = history[0].price
+            previous = history[1].price
+
+            if current < previous:
+                drop_percent = float((previous - current) / previous * 100)
+                results.append({
+                    'product': product,
+                    'previous_price': previous,
+                    'current_price': current,
+                    'drop_percent': drop_percent,
+                    'recorded_at': history[0].recorded_at
+                })
+
+        # Sort by biggest drop
+        results.sort(key=lambda x: x['drop_percent'], reverse=True)
+        return results
+
+    def get_products_with_price_rise(self, store: Optional[Store] = None) -> List[dict]:
+        """Get products where the last price is higher than the previous one."""
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            history = self.get_price_history(product.id, days=7)
+            if len(history) < 2:
+                continue
+
+            # History is sorted DESC, so [0] is most recent, [1] is previous
+            current = history[0].price
+            previous = history[1].price
+
+            if current > previous:
+                rise_percent = float((current - previous) / previous * 100)
+                results.append({
+                    'product': product,
+                    'previous_price': previous,
+                    'current_price': current,
+                    'rise_percent': rise_percent,
+                    'recorded_at': history[0].recorded_at
+                })
+
+        # Sort by biggest rise
+        results.sort(key=lambda x: x['rise_percent'], reverse=True)
+        return results
+
+    def get_volatile_products(self, days: int = 30, threshold: float = 10.0, store: Optional[Store] = None) -> List[dict]:
+        """
+        Get products with high price volatility (coefficient of variation > threshold%).
+
+        Coefficient of variation = (std_dev / avg) * 100
+        """
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            stats = self.get_std_deviation(product.id, days)
+            if not stats:
+                continue
+
+            avg_price, std_dev = stats
+            if avg_price > 0:
+                cv = float(std_dev / avg_price * 100)
+                if cv >= threshold:
+                    results.append({
+                        'product': product,
+                        'avg_price': avg_price,
+                        'std_deviation': std_dev,
+                        'coefficient_variation': cv,
+                        'days': days
+                    })
+
+        # Sort by highest volatility
+        results.sort(key=lambda x: x['coefficient_variation'], reverse=True)
+        return results
+
+    def get_stable_products(self, days: int = 30, threshold: float = 5.0, store: Optional[Store] = None) -> List[dict]:
+        """
+        Get products with stable prices (coefficient of variation < threshold%).
+
+        Coefficient of variation = (std_dev / avg) * 100
+        """
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            stats = self.get_std_deviation(product.id, days)
+            if not stats:
+                continue
+
+            avg_price, std_dev = stats
+            if avg_price > 0:
+                cv = float(std_dev / avg_price * 100)
+                if cv < threshold:
+                    results.append({
+                        'product': product,
+                        'avg_price': avg_price,
+                        'std_deviation': std_dev,
+                        'coefficient_variation': cv,
+                        'days': days
+                    })
+
+        # Sort by lowest volatility
+        results.sort(key=lambda x: x['coefficient_variation'])
+        return results
+
+    def get_near_minimum(self, threshold_percent: float = 5.0, store: Optional[Store] = None) -> List[dict]:
+        """Get products where current price is within threshold% of the historical minimum."""
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            if not product.current_price or not product.lowest_price:
+                continue
+
+            if product.lowest_price > 0:
+                diff_percent = float((product.current_price - product.lowest_price) / product.lowest_price * 100)
+                if 0 < diff_percent <= threshold_percent:
+                    results.append({
+                        'product': product,
+                        'lowest_price': product.lowest_price,
+                        'diff_percent': diff_percent
+                    })
+
+        # Sort by closest to minimum
+        results.sort(key=lambda x: x['diff_percent'])
+        return results
+
+    def get_opportunity_score(self, store: Optional[Store] = None) -> List[dict]:
+        """
+        Calculate an opportunity score for each product based on multiple factors.
+
+        Score considers:
+        - Distance from minimum (higher = better)
+        - Below average (bonus points)
+        - Below std deviation (bonus points)
+        - Recent price drop (bonus points)
+        """
+        products = self.get_all_products(active_only=True, store=store)
+        results = []
+
+        for product in products:
+            if not product.current_price or not product.lowest_price or not product.highest_price:
+                continue
+
+            score = 0
+            factors = []
+
+            # Factor 1: Position in price range (0-40 points)
+            price_range = product.highest_price - product.lowest_price
+            if price_range > 0:
+                position = (product.highest_price - product.current_price) / price_range
+                range_score = float(position * 40)
+                score += range_score
+                if range_score >= 30:
+                    factors.append(f"Próximo do mínimo ({range_score:.0f}pts)")
+
+            # Factor 2: At minimum (20 bonus points)
+            if product.current_price <= product.lowest_price:
+                score += 20
+                factors.append("No mínimo histórico (+20pts)")
+
+            # Factor 3: Below 30d average (15 points)
+            avg_30 = self.get_average_price(product.id, 30)
+            if avg_30 and product.current_price < avg_30:
+                score += 15
+                factors.append("Abaixo da média 30d (+15pts)")
+
+            # Factor 4: Below 1 std deviation (15 points)
+            stats = self.get_std_deviation(product.id, 30)
+            if stats:
+                avg, std = stats
+                if product.current_price <= (avg - std):
+                    score += 15
+                    factors.append("Abaixo de 1 DP (+15pts)")
+                    # Factor 5: Below 2 std deviation (additional 10 points)
+                    if product.current_price <= (avg - std * 2):
+                        score += 10
+                        factors.append("Abaixo de 2 DP (+10pts)")
+
+            if score > 0:
+                results.append({
+                    'product': product,
+                    'score': score,
+                    'factors': factors
+                })
+
+        # Sort by highest score
+        results.sort(key=lambda x: x['score'], reverse=True)
+        return results
+
     def deactivate_product(self, product_id: int) -> bool:
         """Deactivate a product (stop monitoring)."""
         query = "UPDATE products SET is_active = FALSE WHERE id = %s"

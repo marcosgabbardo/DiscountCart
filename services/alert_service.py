@@ -216,7 +216,9 @@ class AlertService:
                 print(f"\n  📅 Período: {period}")
                 for item in items:
                     p = item['product']
-                    print(f"    • {p.title[:40]}...")
+                    store_val = p.store.value if hasattr(p.store, 'value') else str(p.store)
+                    store_icon = '🟢' if store_val == 'zaffari' else '🔵'
+                    print(f"    • {store_icon} {p.title[:40]}...")
                     print(f"      R$ {p.current_price:.2f} (limite: R$ {item['threshold']:.2f})")
             else:
                 print(f"\n  📅 Período: {period} - Nenhum produto")
@@ -230,7 +232,9 @@ class AlertService:
                 print(f"\n  📅 Período: {period}")
                 for item in items:
                     p = item['product']
-                    print(f"    • {p.title[:40]}...")
+                    store_val = p.store.value if hasattr(p.store, 'value') else str(p.store)
+                    store_icon = '🟢' if store_val == 'zaffari' else '🔵'
+                    print(f"    • {store_icon} {p.title[:40]}...")
                     print(f"      R$ {p.current_price:.2f} (limite: R$ {item['threshold']:.2f})")
             else:
                 print(f"\n  📅 Período: {period} - Nenhum produto")
